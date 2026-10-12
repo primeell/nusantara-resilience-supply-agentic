@@ -21,6 +21,20 @@ async def test_health_and_status_are_honest(api_client: httpx.AsyncClient) -> No
     assert payload["real_transactions_enabled"] is False
 
 
+async def test_health_fails_when_state_store_is_unavailable(
+    api_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.api import repository
+
+    monkeypatch.setattr(repository, "healthcheck", lambda: False)
+
+    response = await api_client.get("/health")
+
+    assert response.status_code == 503
+    assert response.json()["message"] == "Operational state store is unavailable"
+
+
 async def test_status_never_returns_secret_values(
     api_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,

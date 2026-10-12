@@ -10,14 +10,13 @@ the manifest, or command output.
 - Space: `hackathon-a-cruel-angel-s-thesis`
 - App: `nsra-a-cruel-angels-thesis`
 
-## 1. Authenticate with SSO
+## 1. Authenticate with the hackathon identity provider
 
 Run this yourself in an interactive PowerShell window:
 
 ```powershell
+cf api https://api.cf.ap10.hana.ondemand.com
 cf login `
-  -a https://api.cf.ap10.hana.ondemand.com `
-  --sso `
   --origin auisywroy-platform `
   -o "SEAIO_aws-sap-hackathon-si4ykj9d" `
   -s "hackathon-a-cruel-angel-s-thesis"
@@ -38,7 +37,33 @@ cf services
 The marketplace output determines whether a PostgreSQL service can be created
 in the team space. Do not guess an offering or paid plan.
 
-## 3. Deploy without starting
+## 3. Provision PostgreSQL first
+
+The team BTP marketplace has no PostgreSQL entitlement, so use an approved
+managed PostgreSQL endpoint (for example AWS RDS in the hackathon account). It
+must support TLS and accept traffic from the Cloud Foundry runtime. Put its URI
+only in the ignored local `.env` file:
+
+```dotenv
+DATABASE_URL=postgresql://<user>:<password>@<host>:5432/<database>
+NSRA_POSTGRES_SSLMODE=require
+```
+
+Do not commit the URI or pass it in chat. Verify it without printing the value:
+
+```powershell
+python scripts/test_postgres_connection.py
+```
+
+To preserve a reviewed local SQLite workflow, migrate it before first app
+startup. The command refuses to overwrite an initialized destination unless
+`--force` is supplied deliberately:
+
+```powershell
+python scripts/migrate_sqlite_to_postgres.py
+```
+
+## 4. Deploy without starting
 
 ```powershell
 cd C:\nusantara-supply-agent
@@ -49,18 +74,27 @@ The manifest contains no credentials. The `.cfignore` file prevents local
 secrets, virtual environments, local databases, tests, and development artifacts
 from being uploaded.
 
-## 4. Configure SAP AI Core runtime values
+## 5. Configure runtime values
 
 The helper reads the approved local `.env`, sends only the required settings to
 the targeted app, and prints variable names only:
 
 ```powershell
-python scripts/configure_cf_runtime.py --start
+python scripts/configure_cf_runtime.py
 ```
+
+Configure PostgreSQL before starting the new revision:
+
+```powershell
+python scripts/configure_postgres_runtime.py
+```
+
+Run the SAP helper without `--start`, then restage once after both helpers have
+completed, or pass `--start` only to the last helper.
 
 If `cf` is not yet visible on `PATH`, pass the exact executable with `--cf`.
 
-## 5. Verify the deployed application
+## 6. Verify the deployed application
 
 ```powershell
 cf app nsra-a-cruel-angels-thesis
@@ -85,11 +119,12 @@ quota. The deterministic engine remains available to all demo users.
 
 ## Persistence policy
 
-The application selects PostgreSQL automatically from `DATABASE_URL`,
-`POSTGRES_URL`, or a bound PostgreSQL service in `VCAP_SERVICES`. Without one, it
-uses SQLite at `/tmp/nsra-state.sqlite3` as an explicitly reported
-`ephemeral-instance` fallback. Keep the app at one instance until a durable
-database is bound.
+Local development explicitly uses SQLite. The production manifest sets
+`NSRA_STATE_BACKEND=postgresql`, so deployment fails closed when neither
+`DATABASE_URL`, `POSTGRES_URL`, nor a compatible bound service is present. The
+public status endpoint must report `engine: postgresql`, `persistent: true`, and
+`scope: durable-cloud` after deployment. Keep the app at one instance while the
+snapshot repository uses its current process-level write lock.
 
 ## Joule gate
 

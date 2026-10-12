@@ -12,7 +12,10 @@ def test_manifest_uses_port_health_check_and_python_buildpack() -> None:
     assert "python_buildpack" in manifest
     assert "--port $PORT" in manifest
     assert "health-check-http-endpoint: /health" in manifest
-    assert "NSRA_STATE_PERSISTENCE: auto" in manifest
+    assert "NSRA_STATE_BACKEND: postgresql" in manifest
+    assert "NSRA_STATE_PERSISTENCE: durable-cloud" in manifest
+    assert "NSRA_POSTGRES_SSLMODE: require" in manifest
+    assert "NSRA_STATE_DB_PATH" not in manifest
     assert 'NSRA_LIVE_AI_REQUESTS_ENABLED: "false"' in manifest
 
 
@@ -55,10 +58,10 @@ def test_cloud_runtime_helper_never_contains_secret_values() -> None:
     assert "write_text" not in helper
 
 
-def test_cloud_deployment_runbook_requires_interactive_sso() -> None:
+def test_cloud_deployment_runbook_uses_hackathon_identity_provider() -> None:
     runbook = (ROOT / "docs" / "CLOUD_DEPLOYMENT.md").read_text(encoding="utf-8")
 
-    assert "--sso" in runbook
+    assert "--sso `\n  --origin" not in runbook
     assert "auisywroy-platform" in runbook
     assert "hackathon-a-cruel-angel-s-thesis" in runbook
 

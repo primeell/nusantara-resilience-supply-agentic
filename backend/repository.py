@@ -10,6 +10,8 @@ from pathlib import Path
 from threading import RLock
 from zoneinfo import ZoneInfo
 
+from dotenv import load_dotenv
+
 from backend.schemas import (
     AnalysisResult,
     AuditRecord,
@@ -28,6 +30,24 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SEED_PATH = PROJECT_ROOT / "data" / "demo_seed.json"
 DEFAULT_STATE_PATH = PROJECT_ROOT / ".nsra-local" / "nsra-state.sqlite3"
 DEMO_TIMEZONE = ZoneInfo("Asia/Makassar")
+POSTGRES_SSLMODES = {"disable", "allow", "prefer", "require", "verify-ca", "verify-full"}
+SECURE_POSTGRES_SSLMODES = {"require", "verify-ca", "verify-full"}
+
+# Repository selection happens while this module is imported. Load the local
+# file here (without overriding process settings) so DATABASE_URL is available
+# before the singleton repository is constructed.
+load_dotenv(PROJECT_ROOT / ".env", override=False)
+
+
+def _postgres_sslmode_from_env() -> str:
+    production = os.getenv("APP_ENV", "development").strip().casefold() == "production"
+    sslmode = os.getenv("NSRA_POSTGRES_SSLMODE", "require" if production else "prefer")
+    sslmode = sslmode.strip().casefold()
+    if sslmode not in POSTGRES_SSLMODES:
+        raise RuntimeError("NSRA_POSTGRES_SSLMODE is not a supported PostgreSQL SSL mode")
+    if production and sslmode not in SECURE_POSTGRES_SSLMODES:
+        raise RuntimeError("Production PostgreSQL connections must require TLS")
+    return sslmode
 
 
 class EntityNotFoundError(LookupError):
@@ -293,6 +313,11 @@ class InMemoryRepository:
             records = [item for item in records if item.incident_id == incident_id]
         return [item.model_copy(deep=True) for item in records]
 
+    def healthcheck(self) -> bool:
+        """Return whether the repository can currently serve requests."""
+
+        return True
+
 
 class SQLiteRepository(InMemoryRepository):
     """Small durable state store for the single-machine competition demo.
@@ -343,6 +368,14 @@ class SQLiteRepository(InMemoryRepository):
                 )
                 """
             )
+
+    def healthcheck(self) -> bool:
+        try:
+            with self._connect() as connection:
+                connection.execute("SELECT 1")
+            return True
+        except (OSError, sqlite3.Error):
+            return False
 
     @staticmethod
     def _payload(model: object) -> str:
@@ -521,7 +554,23 @@ class PostgreSQLRepository(SQLiteRepository):
             raise RuntimeError(
                 "PostgreSQL is configured but psycopg is not installed"
             ) from exc
-        return psycopg.connect(self.dsn, connect_timeout=10)
+        connect_options: dict[str, object] = {
+            "connect_timeout": 10,
+            "application_name": "nsra-api",
+            "sslmode": _postgres_sslmode_from_env(),
+        }
+        return psycopg.connect(self.dsn, **connect_options)
+
+    def healthcheck(self) -> bool:
+        try:
+            with self._connect() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT 1")
+                    return cursor.fetchone() == (1,)
+        except Exception:
+            # Health responses deliberately omit driver errors because DSNs can
+            # contain credentials. Deployment logs retain the startup failure.
+            return False
 
     def _ensure_schema(self) -> None:
         with self._connect() as connection:
@@ -632,6 +681,19 @@ def _state_path_from_env() -> Path:
     return Path(configured).expanduser() if configured else DEFAULT_STATE_PATH
 
 
+def _state_backend_from_env() -> str:
+    configured = os.getenv("NSRA_STATE_BACKEND")
+    if configured is None:
+        production = os.getenv("APP_ENV", "development").strip().casefold() == "production"
+        return "postgresql" if production else "auto"
+    backend = configured.strip().casefold()
+    if backend not in {"auto", "sqlite", "postgresql"}:
+        raise RuntimeError(
+            "NSRA_STATE_BACKEND must be one of: auto, sqlite, postgresql"
+        )
+    return backend
+
+
 def _postgres_dsn_from_env() -> str | None:
     direct = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL")
     if direct:
@@ -666,9 +728,19 @@ def _postgres_dsn_from_env() -> str | None:
 
 
 def build_repository() -> InMemoryRepository:
+    backend = _state_backend_from_env()
+    if backend == "sqlite":
+        return SQLiteRepository(db_path=_state_path_from_env())
+
     postgres_dsn = _postgres_dsn_from_env()
     if postgres_dsn:
         return PostgreSQLRepository(dsn=postgres_dsn)
+
+    if backend == "postgresql":
+        raise RuntimeError(
+            "PostgreSQL is required but no DATABASE_URL, POSTGRES_URL, or "
+            "bound PostgreSQL service was found"
+        )
     return SQLiteRepository(db_path=_state_path_from_env())
 
 

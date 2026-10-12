@@ -203,6 +203,11 @@ async def unexpected_exception_handler(request: Request, exc: Exception) -> JSON
 
 @app.get("/health")
 async def health() -> dict[str, str]:
+    if not repository.healthcheck():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Operational state store is unavailable",
+        )
     return {"status": "ok", "service": "nsra-api"}
 
 

@@ -4,8 +4,8 @@
 
 NSRA uses a maintainable modular monolith. Reviewed reference fixtures remain in
 JSON, while mutable incidents, analyses, drafts, counters, and audit records are
-persisted as schema-validated snapshots in a local SQLite database. This gives
-the local application restart durability without claiming production database readiness.
+persisted as schema-validated snapshots. Local development uses SQLite; the
+Cloud Foundry runtime requires PostgreSQL and refuses to start without a DSN.
 
 ~~~text
 EventBridge-compatible JSON      First-party web application
@@ -16,7 +16,7 @@ EventBridge-compatible JSON      First-party web application
                   +-------------------+-------------------+
                   |                   |                   |
                   v                   v                   v
-          SQLite repository     Deterministic engine   Approval/audit
+       PostgreSQL / SQLite      Deterministic engine   Approval/audit
           + JSON fixtures       hourly stock + cost    simulated only
                   |                   |
                   +---------+---------+
@@ -41,7 +41,7 @@ EventBridge-compatible JSON      First-party web application
   scenario ID or cite unknown evidence.
 - Tool names are allowlisted. Draft creation is side-effecting and denied unless
   a caller explicitly grants that local permission.
-- Approval writes only to durable local simulated state. Draft creation is
+- Approval writes only to durable simulated state. Draft creation is
   idempotent, decisions use optimistic version checks, and the SAP adapter only
   builds a simulation-marked payload without transmitting it.
 
@@ -62,10 +62,12 @@ EventBridge-compatible JSON      First-party web application
 ### Deployment status
 
 - Local application and API: **MOCK VERIFIED**.
-- SAP AI Core client and offline fallback: implemented; live inference was not
-  invoked in this build session.
+- SAP AI Core client and offline fallback: **LIVE VERIFIED IN CLOUD**.
+- PostgreSQL adapter, fail-closed cloud policy, TLS connection check, and
+  SQLite migration helper: implemented; managed database provisioning remains
+  an environment operation.
 - AWS EventBridge/Lambda payload: **LOCAL EMULATED; LIVE NOT VERIFIED**.
-- SAP Joule: capability contract/planning only; **NOT DEPLOYED**.
+- SAP Joule: A2A capability invoked successfully in the authorized tenant.
 - Real SAP business transaction writes: deliberately **NOT IMPLEMENTED**.
 
 ---

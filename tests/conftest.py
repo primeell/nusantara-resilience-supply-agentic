@@ -12,6 +12,7 @@ import pytest
 
 # Keep test resets isolated from a concurrently running demo service.
 TEST_STATE_PATH = Path(tempfile.gettempdir()) / f"nsra-pytest-{os.getpid()}.sqlite3"
+os.environ["NSRA_STATE_BACKEND"] = "sqlite"
 os.environ.setdefault("NSRA_STATE_DB_PATH", str(TEST_STATE_PATH))
 
 from backend.main import app  # noqa: E402

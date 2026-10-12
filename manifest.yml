@@ -13,7 +13,8 @@ applications:
     timeout: 180
     env:
       APP_ENV: production
-      NSRA_STATE_DB_PATH: /tmp/nsra-state.sqlite3
-      NSRA_STATE_PERSISTENCE: auto
+      NSRA_STATE_BACKEND: postgresql
+      NSRA_STATE_PERSISTENCE: durable-cloud
+      NSRA_POSTGRES_SSLMODE: require
       NSRA_LIVE_AI_REQUESTS_ENABLED: "false"
       SAP_RESOURCE_GROUP: default

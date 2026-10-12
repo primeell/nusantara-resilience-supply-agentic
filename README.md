@@ -72,7 +72,8 @@ This repository provides a complete local hackathon workflow:
   calculations.
 - Bounded mitigation search with material, unit, destination, source capacity,
   MOQ, dispatch cutoff, lead-time, availability, and reliability constraints.
-- Five reproducible incident fixtures and resettable SQLite-backed durable state.
+- Five reproducible incident fixtures with SQLite for isolated local development
+  and PostgreSQL for durable cloud state.
 - Allowlisted Python-driven planner, optional grounded SAP AI explanation,
   strict validation, and deterministic offline fallback.
 - Human approval and audit trail; no real ERP write is possible.
@@ -130,13 +131,14 @@ Optimization     Recommendations
 - SAP AI Core / Generative AI Hub
 - GPT-5.4
 - AWS EventBridge and Lambda — planned
-- SAP BTP Cloud Foundry — planned
-- SAP Joule — planned
+- PostgreSQL via an approved managed cloud endpoint
+- SAP BTP Cloud Foundry
+- SAP Joule A2A capability
 
-Cloud Foundry deployment assets are now included. See the
-[deployment runbook](docs/CLOUD_DEPLOYMENT.md). PostgreSQL is selected
-automatically when a compatible service is bound; otherwise the single-instance
-cloud deployment reports its SQLite state as ephemeral.
+Cloud Foundry deployment assets are included. See the
+[deployment runbook](docs/CLOUD_DEPLOYMENT.md). The production manifest now
+fails closed unless a PostgreSQL DSN is configured; it no longer falls back to
+ephemeral SQLite in the cloud.
 
 ## Project Structure
 

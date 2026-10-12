@@ -8,11 +8,11 @@
 | Streamlit-to-FastAPI client | LOCAL MOCK VERIFIED | Client tests and local smoke procedure |
 | SAP AI Core HTTP client | LIVE VERIFIED IN CLOUD | Controlled GPT-5.4 inference succeeded from the deployed BTP runtime on 2026-10-11; OAuth and response were validated without logging secrets |
 | Deterministic AI fallback | MOCK VERIFIED | Timeout, malformed JSON, unknown evidence and changed scenario tests |
-| PostgreSQL state store | IMPLEMENTED, ENTITLEMENT NOT YET VERIFIED | Auto-detects `DATABASE_URL`, `POSTGRES_URL`, or a bound PostgreSQL service; SQLite remains the explicit fallback |
+| PostgreSQL state store | IMPLEMENTED, MANAGED ENDPOINT PENDING | Production fails closed without PostgreSQL; TLS connection verification, health probing, secret-safe CF configuration, and SQLite migration tooling are implemented |
 | SAP BTP Cloud Foundry app | DEPLOYED AND HEALTHY | `nsra-a-cruel-angels-thesis` runs in the team space with public `/health`, status, and integration-health verification |
 | SAP transaction payload mapping | LOCAL MOCK VERIFIED | Payload is marked simulationOnly; no network write method exists |
 | AWS EventBridge/Lambda contract | LOCAL EMULATED; LIVE NOT VERIFIED | Normalization and idempotent local handler tests |
-| SAP Joule | A2A CAPABILITY READY, NOT YET DEPLOYED | Cloud A2A agent card and JSON-RPC briefing are verified; `NSRA_SUPPLY_AGENT_A2A` Destination is configured; tenant CLI login and final capability deploy remain |
+| SAP Joule | LIVE VERIFIED IN TENANT | The A2A capability was deployed and returned the NSRA incident response in Joule using the authorized BTP identity |
 | Real ERP order or stock transfer | INTENTIONALLY NOT IMPLEMENTED | Human approval changes local simulated state only |
 
 ## Minimal future live proof
