@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 
@@ -26,8 +27,9 @@ class SAPConfig:
     auth_url: str
     ai_api_url: str
     resource_group: str = "default"
-    gpt_deployment_id: str = "d1a82575de60e02a"
-    claude_deployment_id: str = "dc9594f579d3e4c1"
+    gpt_deployment_id: str = ""
+    claude_deployment_id: str = ""
+    api_version: str = "2024-12-01-preview"
 
     @classmethod
     def from_env(cls, *, require_credentials: bool = True) -> "SAPConfig":
@@ -39,11 +41,12 @@ class SAPConfig:
             "auth_url": os.getenv("SAP_AUTH_URL", "").strip().rstrip("/"),
             "ai_api_url": os.getenv("SAP_AI_API_URL", "").strip().rstrip("/"),
             "resource_group": os.getenv("SAP_RESOURCE_GROUP", "default").strip() or "default",
-            "gpt_deployment_id": os.getenv(
-                "SAP_GPT_DEPLOYMENT_ID", "d1a82575de60e02a"
-            ).strip(),
+            "gpt_deployment_id": os.getenv("SAP_GPT_DEPLOYMENT_ID", "").strip(),
             "claude_deployment_id": os.getenv(
-                "SAP_CLAUDE_DEPLOYMENT_ID", "dc9594f579d3e4c1"
+                "SAP_CLAUDE_DEPLOYMENT_ID", ""
+            ).strip(),
+            "api_version": os.getenv(
+                "SAP_AI_API_VERSION", "2024-12-01-preview"
             ).strip(),
         }
         required = ("client_id", "client_secret", "auth_url", "ai_api_url")
@@ -75,10 +78,11 @@ class SAPAIClient:
     def _deployment_url(self) -> str:
         """Build the standard SAP AI Core chat-completions endpoint."""
 
-        return (
+        endpoint = (
             f"{self.config.ai_api_url}/v2/inference/deployments/"
             f"{self.config.gpt_deployment_id}/chat/completions"
         )
+        return f"{endpoint}?{urlencode({'api-version': self.config.api_version})}"
 
     def _get_access_token(self) -> str:
         """Obtain an OAuth token, exposing only sanitized failure messages."""
@@ -188,8 +192,7 @@ def configuration_readiness() -> dict[str, bool]:
         "auth_url": bool(os.getenv("SAP_AUTH_URL", "").strip()),
         "ai_api_url": bool(os.getenv("SAP_AI_API_URL", "").strip()),
         "gpt_deployment_id": bool(
-            os.getenv("SAP_GPT_DEPLOYMENT_ID", "d1a82575de60e02a").strip()
+            os.getenv("SAP_GPT_DEPLOYMENT_ID", "").strip()
         ),
     }
     return fields
-

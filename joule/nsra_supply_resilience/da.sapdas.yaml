@@ -1,0 +1,6 @@
+schema_version: 1.4.0
+name: nsra_supply_resilience
+capabilities:
+  - type: local
+    name: nsra_supply_resilience
+    folder: ./

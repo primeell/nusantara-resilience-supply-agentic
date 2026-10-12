@@ -1,0 +1,19 @@
+---
+applications:
+  - name: nsra-a-cruel-angels-thesis
+    path: .
+    memory: 512M
+    disk_quota: 1G
+    instances: 1
+    buildpacks:
+      - python_buildpack
+    command: python -m uvicorn backend.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"
+    health-check-type: http
+    health-check-http-endpoint: /health
+    timeout: 180
+    env:
+      APP_ENV: production
+      NSRA_STATE_DB_PATH: /tmp/nsra-state.sqlite3
+      NSRA_STATE_PERSISTENCE: auto
+      NSRA_LIVE_AI_REQUESTS_ENABLED: "false"
+      SAP_RESOURCE_GROUP: default

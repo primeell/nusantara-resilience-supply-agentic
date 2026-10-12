@@ -10,6 +10,11 @@ Do not generate another service key, change IAM roles, or use a personal IAS log
 
 ## Branches and pull requests
 
+Current recommended ownership branches are **feature/agent-orchestration** for
+Developer A and **feature/supply-chain-engine** for Developer B. Shared
+contract/dashboard/release changes use a short-lived reviewed branch. See
+[TEAM_TASKS.md](TEAM_TASKS.md) for the acceptance matrix.
+
 Suggested branches are `feature/sap-agent`, `feature/inventory-optimization`, and `feature/dashboard`. Keep `main` protected and merge through pull requests after tests and review. Do not force-push or overwrite another developer’s work.
 
 Developer A owns:
@@ -25,6 +30,9 @@ Developer B owns:
 - Initial backend endpoints and dashboard inputs.
 
 ## Proposed issue backlog
+
+The list below is historical planning; current discrete tickets and dependencies
+are maintained in [TEAM_TASKS.md](TEAM_TASKS.md).
 
 These are proposed only; do not create them remotely without owner approval.
 
@@ -46,4 +54,3 @@ Before creating a remote repository or pushing:
 5. Create the private remote and push only after approval.
 
 Do not invite collaborators until the owner supplies exact GitHub usernames and approves the invitations.
-

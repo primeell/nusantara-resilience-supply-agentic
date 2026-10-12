@@ -1,0 +1,15 @@
+schema_version: 3.28.0
+
+metadata:
+  namespace: joule.ext
+  name: nsra_supply_resilience
+  version: 1.0.1
+  display_name: "NSRA Supply Resilience"
+  description: >
+    Provides read-only supply disruption briefings and deterministic mitigation
+    recommendations for NSRA. Use for questions about inter-island supply risks,
+    stockout exposure, incident INC-MKS-FOUR-DAY, and recommended responses.
+
+system_aliases:
+  NsraSupplyAgent:
+    destination: NSRA_SUPPLY_AGENT_A2A

@@ -1,0 +1,31 @@
+description: >
+  Use this capability when a user asks about Indonesian inter-island supply-chain
+  disruption, inventory and stockout exposure, mitigation options, or the NSRA
+  incident INC-MKS-FOUR-DAY. Examples: "What is the highest-priority supply
+  incident?", "Brief me on INC-MKS-FOUR-DAY", and "What mitigation is recommended
+  for the Makassar disruption?". The capability returns a read-only synthetic
+  decision briefing and never executes an ERP transaction.
+
+visibility_condition:
+  objects:
+    - type: ias_attributes
+      attributes:
+        - attribute: groups
+          match: "ANY"
+          values:
+            - 6bd9b4b3-3586-41fc-8926-1b8ab600d20c
+
+target:
+  type: function
+  name: nsra_briefing
+  parameters:
+    - name: contextId
+      value: $capability_context.contextId
+    - name: taskId
+      value: $capability_context.taskId
+
+capability_context:
+  - name: contextId
+    value: $target_result.contextId
+  - name: taskId
+    value: $target_result.taskId
