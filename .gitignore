@@ -3,7 +3,12 @@
 .env.*
 !.env.example
 secrets/
-*.json
+# Credential exports only. Data/API JSON fixtures remain trackable.
+*credential*.json
+*credentials*.json
+*service-key*.json
+sap-key*.json
+private-key*.json
 !package-lock.json
 
 # Python
@@ -19,4 +24,48 @@ __pycache__/
 *.log
 logs/
 .streamlit/secrets.toml
+*.db
+*.sqlite
+*.sqlite3
+.nsra-local/
+screenshots/private/
+
+# Windows and local agent scratch files
+desktop.ini
+Thumbs.db
+_agent_tool_test/
+
+# Local AI/developer tooling (may contain local proxy credentials)
+opencode.json*
+NSRA_MASTER_BUILD_PROMPT.md
+.codex/
+.agents/
+.idea/
+.vscode/
+*.backup
+*.backup-*
+*.backup[0-9]*
+*.before-fix
+
+# Private competition source material; publish only by explicit review
+Proposal_*.pdf
+
+# Authentication material and private certificates
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Generated frontend, coverage, and deployment artifacts
+node_modules/
+dist/
+build/
+coverage/
+.coverage
+htmlcov/
+*.daar
+*.mtar
 

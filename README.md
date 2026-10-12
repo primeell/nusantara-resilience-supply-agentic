@@ -11,6 +11,44 @@ Built for the **SAP–AWS Agentic AI Hackathon 2026**.
 - Team slug: `a-cruel-angel-s-thesis`
 - Track: Intelligent Supply Chain
 
+## Quick Start (Windows PowerShell)
+
+The complete local application runs offline with a versioned reference dataset.
+SAP and AWS credentials are not required for the deterministic workflow.
+
+~~~powershell
+cd C:\nusantara-supply-agent
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
+.\scripts\demo_doctor.ps1
+.\scripts\run_tests.ps1
+.\scripts\security_check.ps1
+.\scripts\start_demo.ps1
+~~~
+
+Application: **http://127.0.0.1:8000**
+
+OpenAPI: **http://127.0.0.1:8000/docs**
+
+To stop the local services:
+
+~~~powershell
+.\scripts\stop_demo.ps1
+~~~
+
+Direct server alternative:
+
+~~~powershell
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+~~~
+
+Full workflow smoke test: **python scripts/demo_smoke.py**
+
+See the [API contract](docs/API_CONTRACT.md), [architecture](docs/architecture.md),
+[demo script](docs/DEMO_SCRIPT.md), and [integration status](docs/INTEGRATION_STATUS.md).
+
 ## Project Overview
 
 Indonesia's manufacturing supply chains are vulnerable to port congestion, vessel delays, weather disruptions, geopolitical events, and transportation bottlenecks.
@@ -26,19 +64,32 @@ NSRA helps supply-chain teams:
 
 ## Current MVP Scope
 
-This repository currently provides a secure local development workspace containing:
+This repository provides a complete local hackathon workflow:
 
-- Minimal FastAPI backend.
-- SAP AI Core GPT-5.4 client interface.
-- Inventory stockout-risk calculation.
-- Mock ERP data source.
-- Logistics scenario optimization interface.
-- Streamlit dashboard shell.
-- Offline SAP connection test mode.
-- Secure environment-variable configuration.
-- Pytest-based local verification.
+- Versioned FastAPI incident, inventory, shipment, analysis, scenario, draft,
+  decision, audit, and reset endpoints.
+- Hourly deterministic stockout, recovery, unmet-demand, cost, and feasibility
+  calculations.
+- Bounded mitigation search with material, unit, destination, source capacity,
+  MOQ, dispatch cutoff, lead-time, availability, and reliability constraints.
+- Five reproducible incident fixtures and resettable SQLite-backed durable state.
+- Allowlisted Python-driven planner, optional grounded SAP AI explanation,
+  strict validation, and deterministic offline fallback.
+- Human approval and audit trail; no real ERP write is possible.
+- Responsive English-language control tower served directly by FastAPI, with
+  real deep-linked modules for executive overview, geographic supply network,
+  incident portfolio/workspaces, scenario intelligence, approval inbox, audit
+  explorer, and integration health.
+- Accessible operational visualizations for hourly baseline/recommended
+  inventory, safety-stock and stockout windows, cost/downtime frontier,
+  mitigation composition, facility-material risk, impact chain, and network and
+  approval trends.
+- EventBridge/Lambda-compatible local adapter and simulated SAP draft payload.
+- Unit, contract, API, persistence, fallback, and mock end-to-end tests.
 
-AWS services, SAP BTP deployment, SAP Joule integration, and production SAP transactions are planned for later phases.
+AWS is locally emulated, SAP AI Core live inference has been verified with a
+controlled GPT-5.4 call, Joule is not yet deployed, and production SAP
+transactions are intentionally not implemented.
 
 ## Architecture
 
@@ -74,12 +125,18 @@ Optimization     Recommendations
 - Pydantic
 - HTTPX
 - Pytest
-- Streamlit
+- Standards-based HTML, CSS, and JavaScript frontend (no build step)
+- Streamlit legacy interface retained for compatibility, not launched by default
 - SAP AI Core / Generative AI Hub
 - GPT-5.4
 - AWS EventBridge and Lambda — planned
 - SAP BTP Cloud Foundry — planned
 - SAP Joule — planned
+
+Cloud Foundry deployment assets are now included. See the
+[deployment runbook](docs/CLOUD_DEPLOYMENT.md). PostgreSQL is selected
+automatically when a compatible service is bound; otherwise the single-instance
+cloud deployment reports its SQLite state as ephemeral.
 
 ## Project Structure
 
@@ -87,8 +144,9 @@ Optimization     Recommendations
 nusantara-supply-agent/
 ├── agent/                 # Agent orchestration and SAP AI Core client
 ├── backend/               # FastAPI API, inventory, optimization, mock ERP
+├── frontend/              # Primary first-party operations control tower
 ├── integrations/          # SAP and AWS integration boundaries
-├── dashboard/             # Streamlit MVP dashboard
+├── dashboard/             # Legacy Streamlit interface and API client
 ├── data/                  # Local data fixtures
 ├── tests/                 # Offline unit tests
 ├── docs/                  # Setup, architecture, and collaboration docs
@@ -127,6 +185,20 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\\.venv\\Scripts\\Activate.ps1
 ```
 
+This project supports Python `3.11` to `3.13`.
+
+If your `.venv` was created with a different Python version than the one you want to use now, delete and recreate the virtual environment before reinstalling dependencies. This avoids mixed interpreter and package state.
+
+Example rebuild on Windows PowerShell:
+
+```powershell
+Remove-Item -Recurse -Force .venv
+py -3.12 -m venv .venv
+.\\.venv\\Scripts\\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
 ### Install Dependencies
 
 ```powershell
@@ -152,8 +224,8 @@ SAP_CLIENT_SECRET=
 SAP_AUTH_URL=
 SAP_AI_API_URL=
 SAP_RESOURCE_GROUP=default
-SAP_GPT_DEPLOYMENT_ID=d1a82575de60e02a
-SAP_CLAUDE_DEPLOYMENT_ID=dc9594f579d3e4c1
+SAP_GPT_DEPLOYMENT_ID=
+SAP_CLAUDE_DEPLOYMENT_ID=
 
 AWS_REGION=
 APP_ENV=development
@@ -172,13 +244,13 @@ Cloud Foundry API:
 https://api.cf.ap10.hana.ondemand.com
 
 SAP AI Core resource group:
-default
+<provided through the approved private channel>
 
 GPT-5.4 deployment:
-d1a82575de60e02a
+<set SAP_GPT_DEPLOYMENT_ID locally>
 
 Claude deployment:
-dc9594f579d3e4c1
+<set SAP_CLAUDE_DEPLOYMENT_ID locally if used>
 ```
 
 Do not place the following in GitHub:
@@ -223,13 +295,25 @@ GET /api/v1/status
 
 This endpoint exposes only non-sensitive readiness information. It never returns secrets, tokens, or private credential URLs.
 
-## Running the Dashboard
+## Running the Application
 
 ```powershell
-python -m streamlit run dashboard/app.py
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
-The dashboard currently uses deterministic mock ERP inventory data.
+Open `http://127.0.0.1:8000`. The web application and API share one origin, so
+there is no second frontend process, CORS configuration, or JavaScript build
+step. Business calculations remain exclusively in the Python service layer.
+
+Primary application routes:
+
+- `/overview` — executive portfolio and trend view
+- `/network` — facilities, warehouses, ports, and inter-island routes
+- `/incidents` and `/incidents/{incident_id}` — portfolio and incident workspace
+- `/scenarios/{analysis_id}` — focused scenario comparison
+- `/approvals` — response-package decision inbox
+- `/audit` — traceable system and human activity
+- `/integrations` — honest local/live/emulated integration boundaries
 
 ## Running Tests
 
@@ -238,6 +322,8 @@ python -m pytest
 python scripts/check_environment.py
 python -m pip check
 ```
+
+`check_environment.py` prints only safe diagnostics such as Python version, whether a virtual environment is active, whether `.env` exists locally, and whether required packages are importable.
 
 All tests are designed to run without SAP credentials or paid cloud access.
 
@@ -322,7 +408,7 @@ Suggested branches: `feature/inventory-optimization` and `feature/dashboard`
 9. Keep `main` protected.
 10. Never force-push shared branches.
 
-## Proposed Backlog
+## Post-demo Backlog
 
 ### SAP AI Core Client Hardening
 
@@ -381,7 +467,7 @@ Before any operational action, the system should present:
 
 Final operational actions should require explicit human approval and an auditable decision record.
 
-## Roadmap
+## Post-hackathon Roadmap
 
 ### Phase 1 — Workspace and MVP
 
@@ -423,28 +509,32 @@ Final operational actions should require explicit human approval and an auditabl
 
 ## Project Status
 
-This project is an early-stage hackathon MVP workspace.
+This project is a locally deployable decision-support MVP for the hackathon.
 
 Implemented:
 
-- Local development scaffold.
-- Minimal backend API.
-- Mock inventory data.
-- Stockout-risk calculation.
-- SAP AI Core client interface.
-- Offline SAP connection mode.
-- Streamlit dashboard shell.
-- Local tests and security checks.
+- Resettable synthetic dataset with five incident scenarios.
+- Deterministic time-phased stockout and scenario engine.
+- Full local API workflow through draft approval and audit.
+- Bounded agent tools, grounded decision schema, and offline fallback.
+- SAP AI Core client with sanitized errors and timeouts.
+- EventBridge-compatible local adapter.
+- FastAPI-hosted responsive operations control tower.
+- Windows launch, stop, test, event simulation, and smoke scripts.
+- Automated tests and security checks.
 
 Not yet implemented:
 
-- Production SAP integration.
-- Real-time maritime data.
-- AWS resources.
+- Live SAP inference verification in this build session.
+- Production SAP business-data/write integration.
+- Live or real-time maritime data.
+- Provisioned AWS resources.
 - Cloud Foundry deployment.
-- SAP Joule integration.
-- Automatic operational execution.
-- Production-grade authentication and authorization.
+- SAP Joule deployment.
+- Production-grade persistence, authentication, and authorization.
+
+Automatic operational execution is intentionally out of scope; human approval
+must never silently become a real purchase or inventory movement.
 
 ## License
 
