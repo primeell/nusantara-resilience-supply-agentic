@@ -20,9 +20,13 @@ try {
         throw 'Dependency consistency check failed.'
     }
 
-    & $pythonPath -m pip_audit -r requirements.txt
+    # Audit the already-resolved project environment. Auditing requirements.txt
+    # directly makes pip-audit create a temporary virtual environment and
+    # bootstrap pip/setuptools/wheel, which is slower and prone to transient
+    # package-index failures on Windows.
+    & $pythonPath -m pip_audit --local --progress-spinner off --timeout 30
     if ($LASTEXITCODE -ne 0) {
-        throw 'Dependency vulnerability audit failed.'
+        throw 'Dependency vulnerability audit failed. Review the pip-audit output above.'
     }
 
     Write-Host 'Repository security checks passed.' -ForegroundColor Green
