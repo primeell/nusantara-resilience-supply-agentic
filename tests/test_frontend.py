@@ -45,6 +45,23 @@ async def test_frontend_assets_are_served(
     assert sentinel in response.text
 
 
+async def test_control_tower_interactions_are_shipped(
+    api_client: httpx.AsyncClient,
+) -> None:
+    shell = await api_client.get("/")
+    script = await api_client.get("/assets/app.js")
+    styles = await api_client.get("/assets/styles.css")
+
+    assert 'id="network-map-dialog"' in shell.text
+    assert 'data-inventory-range="${value}"' in script.text
+    assert 'data-scenario-point="${escapeHtml(scenario.scenario_id)}"' in script.text
+    assert 'data-global-filter="facility"' in script.text
+    assert 'data-export-table="portfolio"' in script.text
+    assert 'data-workspace-view="${activeView}"' in script.text
+    assert ".frontier-workspace" in styles.text
+    assert ".global-filter-bar" in styles.text
+
+
 @pytest.mark.parametrize(
     "path",
     [

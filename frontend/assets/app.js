@@ -27,8 +27,18 @@ const ui = {
   decisionActor: document.querySelector("#decision-actor"),
   decisionJustification: document.querySelector("#decision-justification"),
   simulationAcknowledgement: document.querySelector("#simulation-acknowledgement"),
+  networkMapDialog: document.querySelector("#network-map-dialog"),
+  networkMapDialogBody: document.querySelector("#network-map-dialog-body"),
   toast: document.querySelector("#toast"),
 };
+
+const savedUiState = (() => {
+  try {
+    return JSON.parse(window.localStorage.getItem("nsra.ui.v2") || "{}");
+  } catch {
+    return {};
+  }
+})();
 
 const state = {
   loaded: false,
@@ -54,6 +64,20 @@ const state = {
   networkZoom: 1,
   networkPanX: 0,
   networkPanY: 0,
+  inventoryRange: savedUiState.inventoryRange || "ALL",
+  selectedScenarioId: null,
+  incidentView: savedUiState.incidentView || "summary",
+  globalFilters: {
+    facility: savedUiState.globalFilters?.facility || "ALL",
+    material: savedUiState.globalFilters?.material || "ALL",
+    severity: savedUiState.globalFilters?.severity || "ALL",
+  },
+  tables: {
+    portfolio: { sortKey: "exposure", direction: "desc", page: 1, pageSize: 3 },
+    routes: { sortKey: "status", direction: "asc", page: 1, pageSize: 5, query: "", filter: "ALL" },
+    scenarios: { sortKey: "total", direction: "asc", page: 1, pageSize: 5, filter: "ALL" },
+    audit: { sortKey: "timestamp", direction: "desc", page: 1, pageSize: 8 },
+  },
 };
 
 const iconPaths = {
@@ -71,6 +95,10 @@ const iconPaths = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   minus: '<path d="M5 12h14"/>',
   reset: '<path d="M4 9V4h5M20 15v5h-5M5.5 6.5A8 8 0 0 1 19 9m-.5 8.5A8 8 0 0 1 5 15"/>',
+  expand: '<path d="M8 3H3v5M16 3h5v5M8 21H3v-5m18 0v5h-5"/>',
+  download: '<path d="M12 3v12m0 0 5-5m-5 5-5-5M4 20h16"/>',
+  filter: '<path d="M4 5h16l-6 7v5l-4 2v-7z"/>',
+  chevron: '<path d="m8 10 4 4 4-4"/>',
 };
 
 function icon(name, className = "") {
@@ -121,6 +149,75 @@ function formatDay(value) {
 
 function sentenceCase(value) {
   return String(value || "").replaceAll("_", " ").toLowerCase().replace(/^\w/, (match) => match.toUpperCase());
+}
+
+function saveUiPreferences() {
+  try {
+    window.localStorage.setItem("nsra.ui.v2", JSON.stringify({
+      inventoryRange: state.inventoryRange,
+      incidentView: state.incidentView,
+      globalFilters: state.globalFilters,
+    }));
+  } catch {
+    // Local storage is an enhancement; the operational workspace remains usable without it.
+  }
+}
+
+function compareValues(left, right) {
+  if (left == null && right == null) return 0;
+  if (left == null) return 1;
+  if (right == null) return -1;
+  if (typeof left === "number" || typeof right === "number") return Number(left) - Number(right);
+  return String(left).localeCompare(String(right), "en", { numeric: true, sensitivity: "base" });
+}
+
+function sortRows(rows, tableName, accessors) {
+  const config = state.tables[tableName];
+  const accessor = accessors[config.sortKey] || Object.values(accessors)[0];
+  const direction = config.direction === "desc" ? -1 : 1;
+  return [...rows].sort((left, right) => compareValues(accessor(left), accessor(right)) * direction);
+}
+
+function paginateRows(rows, tableName) {
+  const config = state.tables[tableName];
+  const pages = Math.max(1, Math.ceil(rows.length / config.pageSize));
+  config.page = Math.min(Math.max(1, config.page), pages);
+  const start = (config.page - 1) * config.pageSize;
+  return { rows: rows.slice(start, start + config.pageSize), pages, start };
+}
+
+function sortableHeader(label, tableName, key) {
+  const config = state.tables[tableName];
+  const active = config.sortKey === key;
+  const ariaSort = active ? (config.direction === "asc" ? "ascending" : "descending") : "none";
+  return `<th scope="col" aria-sort="${ariaSort}"><button class="sort-button" type="button" data-sort-table="${tableName}" data-sort-key="${key}">${escapeHtml(label)}<span aria-hidden="true">${active ? (config.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></th>`;
+}
+
+function tableFooter(tableName, total, pages, label) {
+  const config = state.tables[tableName];
+  const start = total ? (config.page - 1) * config.pageSize + 1 : 0;
+  const end = Math.min(total, config.page * config.pageSize);
+  return `<div class="table-footer">
+    <span>${start}–${end} of ${total} ${escapeHtml(label)}</span>
+    <label>Rows <select data-page-size="${tableName}" aria-label="Rows per page for ${escapeHtml(label)}">${[3, 5, 8, 10].map((size) => `<option value="${size}"${config.pageSize === size ? " selected" : ""}>${size}</option>`).join("")}</select></label>
+    <div class="pagination" aria-label="${escapeHtml(label)} pagination"><button class="icon-button" type="button" data-page-table="${tableName}" data-page-delta="-1" aria-label="Previous page" ${config.page <= 1 ? "disabled" : ""}>←</button><span>Page ${config.page} of ${pages}</span><button class="icon-button" type="button" data-page-table="${tableName}" data-page-delta="1" aria-label="Next page" ${config.page >= pages ? "disabled" : ""}>→</button></div>
+  </div>`;
+}
+
+function csvCell(value) {
+  return `"${String(value ?? "").replaceAll('"', '""')}"`;
+}
+
+function downloadCsv(filename, columns, rows) {
+  const csv = [columns.map((column) => csvCell(column.label)).join(","), ...rows.map((row) => columns.map((column) => csvCell(column.value(row))).join(","))].join("\r\n");
+  const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 function severityBadge(severity) {
@@ -460,13 +557,19 @@ function networkTransform(width, height) {
   return `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${zoom.toFixed(2)})`;
 }
 
-function renderNetworkMap(network, compact = false) {
+function renderNetworkMap(network, compact = false, fullscreen = false) {
   const width = 920;
   const height = compact ? 330 : 420;
+  const mapId = fullscreen ? "fullscreen" : compact ? "compact" : "page";
   const allNodes = network.nodes || [];
   const nodeMap = new Map(allNodes.map((node) => [node.location_id, node]));
   const showAlternatives = state.networkMode === "ALL" && !compact;
-  const routes = (network.routes || []).filter((route) => showAlternatives || route.route_type === "INBOUND_SHIPMENT");
+  const routes = (network.routes || []).filter((route) => {
+    const modeMatch = showAlternatives || route.route_type === "INBOUND_SHIPMENT";
+    const materialMatch = state.globalFilters.material === "ALL" || route.material_id === state.globalFilters.material;
+    const facilityMatch = state.globalFilters.facility === "ALL" || route.source_id === state.globalFilters.facility || route.destination_id === state.globalFilters.facility;
+    return modeMatch && materialMatch && facilityMatch;
+  });
   const connected = new Set(routes.flatMap((route) => [route.source_id, route.destination_id]));
   const nodes = allNodes.filter((node) => node.location_type !== "SUPPLIER" || connected.has(node.location_id));
   const nodeLayout = layoutNetworkNodes(nodes, width, height);
@@ -476,18 +579,19 @@ function renderNetworkMap(network, compact = false) {
     WAREHOUSE: (x, y) => `<path d="m ${x - 8} ${y - 2} 8-6 8 6v9h-16zM ${x - 3} ${y + 7}v-5h6v5"/>`,
     SUPPLIER: (x, y) => `<circle cx="${x}" cy="${y}" r="5"/><path d="M ${x - 8} ${y + 8}h16"/>`,
   };
-  return `<div class="network-map-shell">
+  return `<div class="network-map-shell ${fullscreen ? "is-fullscreen" : ""}">
     ${compact ? "" : `<div class="map-toolbar" role="group" aria-label="Map view controls">
       <button class="icon-button" type="button" data-map-zoom="-0.25" aria-label="Zoom map out" title="Zoom out">${icon("minus")}</button>
-      <output aria-live="polite" aria-label="Map zoom level">${Math.round(state.networkZoom * 100)}%</output>
+      <output data-map-zoom-output aria-live="polite" aria-label="Map zoom level">${Math.round(state.networkZoom * 100)}%</output>
       <button class="icon-button" type="button" data-map-zoom="0.25" aria-label="Zoom map in" title="Zoom in">${icon("plus")}</button>
       <button class="icon-button" type="button" data-map-reset aria-label="Reset map view" title="Reset view">${icon("reset")}</button>
+      ${fullscreen ? "" : `<button class="icon-button" type="button" data-map-fullscreen aria-label="Open full-screen network map" title="Full screen">${icon("expand")}</button>`}
     </div>`}
     <div class="network-map-stage">
-      <svg class="network-map" data-network-map viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" tabindex="0" aria-labelledby="network-map-title network-map-desc">
-        <title id="network-map-title">Indonesian supply network</title>
-        <desc id="network-map-desc">${network.summary.facilities} factories, ${network.summary.warehouses} warehouses, ${network.summary.ports} ports, and ${network.summary.active_routes} active inbound routes. Use the visible zoom controls or keyboard plus, minus, and arrow keys. A route table follows the map.</desc>
-        <g id="network-viewport" transform="${networkTransform(width, height)}">
+      <svg class="network-map" data-network-map viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" tabindex="0" aria-labelledby="network-map-title-${mapId} network-map-desc-${mapId}">
+        <title id="network-map-title-${mapId}">Indonesian supply network</title>
+        <desc id="network-map-desc-${mapId}">${network.summary.facilities} factories, ${network.summary.warehouses} warehouses, ${network.summary.ports} ports, and ${network.summary.active_routes} active inbound routes. Use the visible zoom controls or keyboard plus, minus, and arrow keys. A route table follows the map.</desc>
+        <g data-network-viewport transform="${networkTransform(width, height)}">
           <g class="island-silhouettes" fill-rule="evenodd" aria-hidden="true">${renderIndonesiaOutline(width, height)}</g>
           <g class="network-routes">
         ${routes.map((route) => {
@@ -537,12 +641,35 @@ function renderNetworkMap(network, compact = false) {
 }
 
 function renderRouteTable(network) {
-  const rows = (network.routes || []).filter((route) => state.networkMode === "ALL" || route.route_type === "INBOUND_SHIPMENT");
+  const config = state.tables.routes;
+  const query = config.query.trim().toLowerCase();
+  const filtered = (network.routes || []).filter((route) => {
+    const modeMatch = state.networkMode === "ALL" || route.route_type === "INBOUND_SHIPMENT";
+    const statusMatch = config.filter === "ALL" || route.status === config.filter;
+    const materialMatch = state.globalFilters.material === "ALL" || route.material_id === state.globalFilters.material;
+    const facilityMatch = state.globalFilters.facility === "ALL" || route.source_id === state.globalFilters.facility || route.destination_id === state.globalFilters.facility;
+    const haystack = [route.route_id, route.label, route.material_id, route.source_id, route.destination_id].join(" ").toLowerCase();
+    return modeMatch && statusMatch && materialMatch && facilityMatch && (!query || haystack.includes(query));
+  });
   const nodes = new Map(network.nodes.map((node) => [node.location_id, node]));
-  return `<div class="table-wrap">
+  const sorted = sortRows(filtered, "routes", {
+    route: (route) => route.label,
+    type: (route) => route.route_type,
+    material: (route) => route.material_id,
+    delay: (route) => Number(route.delay_hours),
+    status: (route) => route.status,
+    exposure: (route) => Number(route.exposure_idr),
+  });
+  const page = paginateRows(sorted, "routes");
+  return `<div class="table-actions">
+      <label class="search-field" for="route-search">${icon("search")}<span class="sr-only">Search routes</span><input id="route-search" type="search" value="${escapeHtml(config.query)}" placeholder="Search route or material" autocomplete="off"></label>
+      <label class="select-field">Status<select data-route-status aria-label="Filter routes by status"><option value="ALL">All statuses</option>${["STABLE", "DELAYED", "CRITICAL", "AVAILABLE"].map((status) => `<option value="${status}"${config.filter === status ? " selected" : ""}>${sentenceCase(status)}</option>`).join("")}</select></label>
+      <button class="button button-secondary" type="button" data-export-table="routes">${icon("download")}Export CSV</button>
+    </div>
+    <div class="table-wrap">
     <table class="data-table route-table">
-      <thead><tr><th scope="col">Route</th><th scope="col">Type</th><th scope="col">Material</th><th scope="col">Lead / delay</th><th scope="col">Status</th><th scope="col">Modeled value</th></tr></thead>
-      <tbody>${rows.map((route) => `<tr>
+      <thead><tr>${sortableHeader("Route", "routes", "route")}${sortableHeader("Type", "routes", "type")}${sortableHeader("Material", "routes", "material")}${sortableHeader("Lead / delay", "routes", "delay")}${sortableHeader("Status", "routes", "status")}${sortableHeader("Modeled value", "routes", "exposure")}</tr></thead>
+      <tbody>${page.rows.map((route) => `<tr>
         <td><strong>${escapeHtml(nodes.get(route.source_id)?.city || route.source_id)} → ${escapeHtml(nodes.get(route.destination_id)?.city || route.destination_id)}</strong><small>${escapeHtml(route.route_id)}</small></td>
         <td>${escapeHtml(route.route_type === "INBOUND_SHIPMENT" ? "Inbound shipment" : "Response option")}</td>
         <td class="mono">${escapeHtml(route.material_id)}</td>
@@ -551,7 +678,7 @@ function renderRouteTable(network) {
         <td>${formatCurrency(route.exposure_idr, true)}</td>
       </tr>`).join("")}</tbody>
     </table>
-  </div>`;
+  </div>${tableFooter("routes", sorted.length, page.pages, "routes")}`;
 }
 
 function projectionHour(simulation, timestamp) {
@@ -604,17 +731,21 @@ function separateEndLabels(entries, top, bottom, minimumGap = 25) {
 function renderInventoryProjection(analysis, recommended) {
   const baseline = analysis.baseline.simulation;
   const response = recommended.simulation;
-  const baselinePoints = baseline.inventory_by_time || [];
-  const responsePoints = response.inventory_by_time || [];
+  const fullBaselinePoints = baseline.inventory_by_time || [];
+  const fullResponsePoints = response.inventory_by_time || [];
+  const fullHorizon = Math.max(baseline.horizon_hours, response.horizon_hours, 1);
+  const requestedHorizon = state.inventoryRange === "ALL" ? fullHorizon : Number(state.inventoryRange);
+  const horizon = Math.min(fullHorizon, requestedHorizon);
+  const baselinePoints = fullBaselinePoints.filter((point) => Number(point.hour) <= horizon);
+  const responsePoints = fullResponsePoints.filter((point) => Number(point.hour) <= horizon);
   if (!baselinePoints.length || !responsePoints.length) {
     return emptyState("Projection unavailable", "Run a new analysis to generate hourly inventory points.");
   }
-  const width = 980;
-  const height = 360;
-  const margin = { top: 40, right: 154, bottom: 58, left: 70 };
+  const width = 1120;
+  const height = 430;
+  const margin = { top: 48, right: 172, bottom: 64, left: 82 };
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
-  const horizon = Math.max(baseline.horizon_hours, response.horizon_hours, 1);
   const observedMax = Math.max(
     baseline.safety_stock,
     ...baselinePoints.map((point) => Number(point.quantity)),
@@ -630,7 +761,7 @@ function renderInventoryProjection(analysis, recommended) {
   const stockoutStart = projectionHour(baseline, baseline.stockout_at);
   const recovery = projectionHour(baseline, baseline.recovery_at) ?? horizon;
   const stockoutWidth = stockoutStart == null ? 0 : Math.max(0, x(Math.min(recovery, horizon)) - x(stockoutStart));
-  const events = projectionArrivalEvents(baseline, response, recommended);
+  const events = projectionArrivalEvents(baseline, response, recommended).filter((event) => event.hour <= horizon);
   const plotEnd = margin.left + innerWidth;
   const plotBottom = margin.top + innerHeight;
   const endLabels = separateEndLabels([
@@ -638,9 +769,15 @@ function renderInventoryProjection(analysis, recommended) {
     { id: "recommended", y: y(responsePoints.at(-1).quantity), value: responsePoints.at(-1).quantity },
   ], margin.top + 13, plotBottom - 13);
   const yTicks = [0, 0.5, 1];
-  const xTicks = [0, Math.round(horizon / 4), Math.round(horizon / 2), Math.round(horizon * 0.75), horizon];
-  return `<div class="chart-shell inventory-chart-shell">
-    <div class="chart-data-note"><span>${icon("check")}</span><strong>Deterministic projection</strong><span>${Math.max(baselinePoints.length, responsePoints.length)} hourly points from the saved analysis</span></div>
+  const xTicks = [...new Set([0, Math.round(horizon / 4), Math.round(horizon / 2), Math.round(horizon * 0.75), horizon])];
+  const pointByHour = new Map(responsePoints.map((point) => [Number(point.hour), point]));
+  const eventByHour = new Map(events.map((event) => [Math.round(event.hour), event]));
+  const hitWidth = Math.max(5, innerWidth / Math.max(1, baselinePoints.length));
+  return `<div class="chart-shell inventory-chart-shell" data-inventory-chart>
+    <div class="chart-command-bar">
+      <div class="chart-data-note"><span>${icon("check")}</span><strong>Deterministic projection</strong><span>${Math.max(baselinePoints.length, responsePoints.length)} hourly points · ${horizon}h view</span></div>
+      <div class="chart-actions"><div class="segmented-filter compact chart-range" aria-label="Inventory chart horizon">${[["24", "24h"], ["72", "72h"], ["ALL", "Full"]].map(([value, label]) => `<button type="button" data-inventory-range="${value}" class="${state.inventoryRange === value ? "is-selected" : ""}" aria-pressed="${state.inventoryRange === value}">${label}</button>`).join("")}</div><button class="button button-secondary button-compact" type="button" data-export-table="inventory">${icon("download")}Export CSV</button></div>
+    </div>
     <p class="chart-mobile-hint">Scroll the chart horizontally to inspect the complete time horizon.</p>
     <div class="chart-viewport" tabindex="0" aria-label="Scrollable inventory projection chart">
     <svg class="chart-svg inventory-chart" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-labelledby="inventory-chart-title inventory-chart-desc">
@@ -661,6 +798,13 @@ function renderInventoryProjection(analysis, recommended) {
       <line class="safety-line" x1="${margin.left}" y1="${safetyY}" x2="${margin.left + innerWidth}" y2="${safetyY}"/>
       <text class="safety-label" x="${margin.left + 7}" y="${Math.max(margin.top + 12, safetyY - 7)}">Safety stock · ${formatNumber(baseline.safety_stock)} ${escapeHtml(baseline.unit)}</text>
       <g clip-path="url(#inventory-plot-clip)"><path class="chart-line chart-line-baseline" d="${baselinePath}"/><path class="chart-line chart-line-recommended" d="${responsePath}"/></g>
+      <g class="inventory-hit-layer" aria-label="Hourly inventory points">${baselinePoints.map((point) => {
+        const hour = Number(point.hour);
+        const responsePoint = pointByHour.get(hour) || point;
+        const event = eventByHour.get(hour);
+        const label = `Hour ${hour}. Baseline ${formatNumber(point.quantity)} ${baseline.unit}. Recommended ${formatNumber(responsePoint.quantity)} ${baseline.unit}${event ? `. Arrival ${formatNumber(event.quantity)} ${event.unit} from ${event.labels.join(" and ")}` : ""}.`;
+        return `<rect x="${x(hour) - hitWidth / 2}" y="${margin.top}" width="${hitWidth}" height="${innerHeight}" tabindex="0" role="button" aria-label="${escapeHtml(label)}" data-inventory-hit data-hour="${hour}" data-baseline="${Number(point.quantity)}" data-recommended="${Number(responsePoint.quantity)}" data-unit="${escapeHtml(baseline.unit)}" data-event="${escapeHtml(event ? `${event.labels.join(" / ")} · +${formatNumber(event.quantity)} ${event.unit}` : "")}"/>`;
+      }).join("")}</g>
       ${events.map((event, index) => `<g class="inventory-event-marker"><circle cx="${x(event.hour)}" cy="${margin.top + 11}" r="9"/><text x="${x(event.hour)}" y="${margin.top + 14}" text-anchor="middle">${index + 1}</text></g>`).join("")}
       ${["baseline", "recommended"].map((id) => {
         const label = endLabels.get(id);
@@ -669,7 +813,7 @@ function renderInventoryProjection(analysis, recommended) {
         const name = id === "baseline" ? "Baseline" : "Recommended";
         return `<path class="end-label-connector ${className}" d="M ${plotEnd} ${sourceY.toFixed(1)} L ${plotEnd + 10} ${sourceY.toFixed(1)} L ${plotEnd + 18} ${label.labelY.toFixed(1)}"/><text class="direct-label ${className}" x="${plotEnd + 23}" y="${(label.labelY - 2).toFixed(1)}"><tspan>${name}</tspan><tspan class="direct-label-value" x="${plotEnd + 23}" dy="12">${formatNumber(label.value, 0)} ${escapeHtml(baseline.unit)}</tspan></text>`;
       }).join("")}
-    </svg></div>
+    </svg><div class="chart-tooltip" data-inventory-tooltip role="status" hidden></div></div>
     <div class="chart-legend"><span><i class="line-key baseline"></i>Baseline, dashed</span><span><i class="line-key recommended"></i>Recommended, solid</span><span><i class="band-key"></i>Baseline shortage interval</span></div>
     ${events.length ? `<ol class="projection-events" aria-label="Modeled inventory arrivals">${events.map((event, index) => `<li><span>${index + 1}</span><div><strong>+${formatNumber(event.hour, 0)}h · ${escapeHtml(event.labels.join(" / "))}</strong><small>Modeled arrival +${formatNumber(event.quantity, 0)} ${escapeHtml(event.unit)}</small></div></li>`).join("")}</ol>` : ""}
     <dl class="projection-summary">
@@ -684,16 +828,23 @@ function renderInventoryProjection(analysis, recommended) {
 function renderScenarioFrontier(analysis) {
   const scenarios = [analysis.baseline, ...analysis.scenarios];
   const recommendedId = analysis.recommended_scenario_id;
-  const width = 720;
-  const height = 340;
-  const margin = { top: 30, right: 26, bottom: 58, left: 68 };
+  if (!state.selectedScenarioId || !scenarios.some((scenario) => scenario.scenario_id === state.selectedScenarioId)) state.selectedScenarioId = recommendedId;
+  const selected = scenarios.find((scenario) => scenario.scenario_id === state.selectedScenarioId) || scenarios[0];
+  const selectedIndex = scenarios.findIndex((scenario) => scenario.scenario_id === selected.scenario_id);
+  const width = 760;
+  const height = 420;
+  const margin = { top: 42, right: 36, bottom: 66, left: 78 };
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
   const maxCost = Math.max(...scenarios.map((item) => Number(item.cost_breakdown.logistics_and_purchase_idr)), 1);
   const maxDowntime = Math.max(...scenarios.map((item) => Number(item.simulation.downtime_hours)), 1);
   const x = (value) => margin.left + (Number(value) / maxCost) * innerWidth;
   const y = (value) => margin.top + innerHeight - (Number(value) / maxDowntime) * innerHeight;
-  return `<div class="chart-shell">
+  const selectedRisks = [...(selected.risks || []), ...(selected.rejected_reasons || [])];
+  return `<div class="frontier-workspace" id="scenario-frontier-body">
+    <div class="chart-shell frontier-chart-shell">
+    <div class="chart-data-note"><span>${icon("check")}</span><strong>Bounded comparison</strong><span>Select or focus a point to inspect its assumptions</span></div>
+    <div class="chart-viewport" tabindex="0" aria-label="Scrollable response scenario frontier">
     <svg class="chart-svg frontier-chart" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-labelledby="frontier-title frontier-desc">
       <title id="frontier-title">Response cost versus production downtime frontier</title>
       <desc id="frontier-desc">${scenarios.length} scenarios. The recommended scenario is marked with a diamond and direct label.</desc>
@@ -716,11 +867,19 @@ function renderScenarioFrontier(analysis) {
         const labelOnLeft = cx > width - 150;
         const labelX = labelOnLeft ? cx - 12 : cx + 12;
         const labelY = Math.max(margin.top + 12, Math.min(margin.top + innerHeight - 8, cy - 10));
-        return `<g tabindex="0" role="listitem"><title>S${index + 1}, ${escapeHtml(scenario.name)}: ${formatCurrency(scenario.cost_breakdown.logistics_and_purchase_idr)}, ${formatNumber(scenario.simulation.downtime_hours)} hours downtime</title>${shape}${recommended ? `<text class="direct-label" x="${labelX}" y="${labelY}" text-anchor="${labelOnLeft ? "end" : "start"}">Recommended</text>` : ""}</g>`;
+        const pointLabel = `S${index + 1}, ${scenario.name}. ${formatCurrency(scenario.cost_breakdown.logistics_and_purchase_idr)} response cost, ${formatNumber(scenario.simulation.downtime_hours)} hours downtime, ${scenario.feasible ? "feasible" : "constraint failed"}.`;
+        return `<g class="frontier-point-target ${selected.scenario_id === scenario.scenario_id ? "is-selected" : ""}" tabindex="0" role="button" aria-pressed="${selected.scenario_id === scenario.scenario_id}" aria-label="${escapeHtml(pointLabel)}" data-scenario-point="${escapeHtml(scenario.scenario_id)}" data-scenario-index="S${index + 1}" data-scenario-name="${escapeHtml(scenario.name)}" data-scenario-cost="${escapeHtml(formatCurrency(scenario.cost_breakdown.logistics_and_purchase_idr))}" data-scenario-downtime="${formatNumber(scenario.simulation.downtime_hours)}h" data-scenario-status="${scenario.feasible ? "Feasible" : "Constraint failed"}"><circle class="frontier-hit-area" cx="${cx}" cy="${cy}" r="18"/><title>${escapeHtml(pointLabel)}</title>${shape}${recommended ? `<text class="direct-label" x="${labelX}" y="${labelY}" text-anchor="${labelOnLeft ? "end" : "start"}">Recommended</text>` : ""}</g>`;
       }).join("")}
     </svg>
+    <div class="chart-tooltip" data-frontier-tooltip role="status" hidden></div></div>
     <div class="chart-legend"><span><i class="shape-key diamond"></i>Recommended</span><span><i class="shape-key circle"></i>Feasible</span><span><i class="shape-key cross">×</i>Constraint failed</span></div>
-    <ol class="frontier-key" aria-label="Scenario point key">${scenarios.map((scenario, index) => `<li><span>S${index + 1}</span><div><strong>${escapeHtml(scenario.name)}</strong><small>${formatCurrency(scenario.cost_breakdown.logistics_and_purchase_idr, true)} · ${formatNumber(scenario.simulation.downtime_hours)}h downtime</small></div></li>`).join("")}</ol>
+    </div>
+    <aside class="scenario-detail-panel" aria-live="polite" aria-label="Selected scenario details">
+      <div class="scenario-detail-heading"><span class="scenario-index">S${selectedIndex + 1}</span><div><span class="eyebrow">Selected scenario</span><h3>${escapeHtml(selected.name)}</h3></div>${selected.scenario_id === recommendedId ? '<span class="recommended-label">Recommended</span>' : ""}</div>
+      <dl class="scenario-detail-metrics"><div><dt>Response cost</dt><dd>${formatCurrency(selected.cost_breakdown.logistics_and_purchase_idr, true)}</dd></div><div><dt>Downtime</dt><dd>${formatNumber(selected.simulation.downtime_hours)}h</dd></div><div><dt>Total impact</dt><dd>${formatCurrency(selected.cost_breakdown.total_idr, true)}</dd></div><div><dt>Feasibility</dt><dd>${selected.feasible ? stateBadge("FEASIBLE") : stateBadge("CONSTRAINT_FAILED")}</dd></div></dl>
+      <div class="scenario-detail-section"><h4>Mitigation composition</h4>${selected.allocations?.length ? selected.allocations.map((allocation) => `<div class="scenario-allocation"><span>${escapeHtml(allocation.source_name)}</span><strong>${formatNumber(allocation.quantity)} ${escapeHtml(allocation.unit)}</strong></div>`).join("") : '<p class="muted-copy">No alternative allocation; waits for the original inbound flow.</p>'}</div>
+      <div class="scenario-detail-section"><h4>${selected.feasible ? "Decision evidence" : "Constraint findings"}</h4><ul class="compact-evidence">${(selected.feasible ? selected.constraints_passed || [] : selectedRisks).slice(0, 4).map((item) => `<li>${icon(selected.feasible ? "check" : "alert")}<span>${escapeHtml(item)}</span></li>`).join("") || "<li>No additional findings recorded.</li>"}</ul></div>
+    </aside>
   </div>`;
 }
 
@@ -760,10 +919,68 @@ function renderImpactChain(item, analysis, recommended) {
   </ol>`;
 }
 
+function globallyFilteredPortfolio() {
+  return state.portfolio.filter((item) => {
+    const facilityMatch = state.globalFilters.facility === "ALL" || item.facility_id === state.globalFilters.facility;
+    const materialMatch = state.globalFilters.material === "ALL" || item.material_id === state.globalFilters.material;
+    const severityMatch = state.globalFilters.severity === "ALL" || item.severity === state.globalFilters.severity;
+    return facilityMatch && materialMatch && severityMatch;
+  });
+}
+
+function renderGlobalFilters() {
+  const facilities = [...new Map(state.portfolio.map((item) => [item.facility_id, { id: item.facility_id, name: item.facility_name }])).values()];
+  const materials = [...new Map(state.portfolio.map((item) => [item.material_id, { id: item.material_id, name: item.material_name }])).values()];
+  const active = Object.values(state.globalFilters).some((value) => value !== "ALL");
+  return `<section class="global-filter-bar" aria-label="Global operational filters">
+    <div class="global-filter-label">${icon("filter")}<div><strong>Operational scope</strong><span>Applied across portfolio and network views</span></div></div>
+    <label>Facility<select data-global-filter="facility"><option value="ALL">All facilities</option>${facilities.map((facility) => `<option value="${escapeHtml(facility.id)}"${state.globalFilters.facility === facility.id ? " selected" : ""}>${escapeHtml(facility.name)}</option>`).join("")}</select></label>
+    <label>Material<select data-global-filter="material"><option value="ALL">All materials</option>${materials.map((material) => `<option value="${escapeHtml(material.id)}"${state.globalFilters.material === material.id ? " selected" : ""}>${escapeHtml(material.name)}</option>`).join("")}</select></label>
+    <label>Severity<select data-global-filter="severity"><option value="ALL">All severities</option>${["CRITICAL", "HIGH", "INFO"].map((severity) => `<option value="${severity}"${state.globalFilters.severity === severity ? " selected" : ""}>${sentenceCase(severity)}</option>`).join("")}</select></label>
+    <button class="button button-secondary button-compact" type="button" data-clear-global-filters ${active ? "" : "disabled"}>Clear filters</button>
+  </section>`;
+}
+
+function filteredRiskMatrix(matrix) {
+  const facilities = state.globalFilters.facility === "ALL" ? matrix.facilities : matrix.facilities.filter((facility) => facility.facility_id === state.globalFilters.facility);
+  const materials = state.globalFilters.material === "ALL" ? matrix.materials : matrix.materials.filter((material) => material.material_id === state.globalFilters.material);
+  const facilityIds = new Set(facilities.map((item) => item.facility_id));
+  const materialIds = new Set(materials.map((item) => item.material_id));
+  return { facilities, materials, cells: matrix.cells.filter((cell) => facilityIds.has(cell.facility_id) && materialIds.has(cell.material_id)) };
+}
+
+function renderOperationalBriefing(overview, scopedItems) {
+  const previous = overview.trend.at(-2);
+  const current = overview.trend.at(-1);
+  const exposureDelta = previous && current ? Number(current.exposure_idr) - Number(previous.exposure_idr) : 0;
+  const exposureDirection = exposureDelta > 0 ? "increased" : exposureDelta < 0 ? "decreased" : "is unchanged";
+  const top = scopedItems[0];
+  const pending = state.drafts.filter((draft) => draft.status === "PENDING_APPROVAL" && scopedItems.some((item) => item.incident_id === draft.incident_id)).length;
+  return `<section class="operational-briefing" aria-labelledby="operational-briefing-title">
+    <div class="briefing-heading"><div><p class="eyebrow">Since previous snapshot</p><h2 id="operational-briefing-title">What changed</h2></div><span>${escapeHtml(formatDateTime(current?.observed_at || overview.generated_at))} WITA</span></div>
+    <div class="briefing-items">
+      <article class="briefing-item ${exposureDelta > 0 ? "is-critical" : "is-positive"}"><span>${icon(exposureDelta > 0 ? "alert" : "check")}</span><div><strong>Exposure ${exposureDirection}</strong><p>${exposureDelta === 0 ? "No change in modeled baseline exposure." : `${exposureDelta > 0 ? "+" : "−"}${formatCurrency(Math.abs(exposureDelta), true)} versus the previous modeled snapshot.`}</p></div></article>
+      <article class="briefing-item"><span>${icon("route")}</span><div><strong>${top ? top.title : "No incidents in scope"}</strong><p>${top ? `${top.facility_name} · ${formatNumber(top.hours_of_cover)}h inventory cover · ${formatCurrency(top.baseline_exposure_idr, true)} exposure.` : "Adjust the global filters to widen the operational scope."}</p></div></article>
+      <article class="briefing-item ${pending ? "is-warning" : "is-positive"}"><span>${icon(pending ? "clock" : "check")}</span><div><strong>${pending} approval${pending === 1 ? "" : "s"} pending</strong><p>${pending ? "Human authorization is required before any response package can progress." : "No approval package in the current scope requires action."}</p></div></article>
+    </div>
+    <p class="briefing-provenance">Derived from persisted operational snapshots and current local approval records.</p>
+  </section>`;
+}
+
 function renderOverviewPage() {
   const overview = state.overview;
-  const kpis = overview.kpis;
-  const priorityRows = overview.priority_incidents.map((item) => `<a class="priority-row" href="/incidents/${encodeURIComponent(item.incident_id)}" data-link>
+  const scopedItems = globallyFilteredPortfolio();
+  const activeItems = scopedItems.filter((item) => item.active);
+  const activeFilters = Object.values(state.globalFilters).some((value) => value !== "ALL");
+  const kpis = activeFilters ? {
+    active_incidents: activeItems.length,
+    critical_incidents: activeItems.filter((item) => item.severity === "CRITICAL").length,
+    at_risk_facilities: new Set(activeItems.map((item) => item.facility_id)).size,
+    delayed_routes: activeItems.filter((item) => Number(item.delay_hours) > 0).length,
+    baseline_exposure_idr: activeItems.reduce((sum, item) => sum + Number(item.baseline_exposure_idr), 0),
+    pending_approvals: state.drafts.filter((draft) => draft.status === "PENDING_APPROVAL" && activeItems.some((item) => item.incident_id === draft.incident_id)).length,
+  } : overview.kpis;
+  const priorityRows = scopedItems.slice(0, 4).map((item) => `<a class="priority-row" href="/incidents/${encodeURIComponent(item.incident_id)}" data-link>
     <span class="severity-rail severity-${item.severity.toLowerCase()}" aria-hidden="true"></span>
     <div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.facility_name)} · ${escapeHtml(item.material_name)}</small></div>
     <div class="priority-impact"><strong>${formatCurrency(item.baseline_exposure_idr, true)}</strong><small>${formatNumber(item.baseline_downtime_hours)}h exposure</small></div>
@@ -776,6 +993,8 @@ function renderOverviewPage() {
       description: "A portfolio-level view of disruption exposure, response readiness, and material risk across the Indonesian supply network.",
       summary: `<span class="snapshot-time">Snapshot · ${escapeHtml(formatDateTime(overview.generated_at))} WITA</span>`,
     })}
+    ${renderGlobalFilters()}
+    ${renderOperationalBriefing(overview, scopedItems)}
     ${kpiStrip([
       { label: "Active incidents", value: String(kpis.active_incidents), detail: `${kpis.critical_incidents} critical`, tone: kpis.critical_incidents ? "tone-critical" : "" },
       { label: "At-risk facilities", value: String(kpis.at_risk_facilities), detail: `${kpis.delayed_routes} delayed routes`, tone: "tone-warning" },
@@ -809,7 +1028,7 @@ function renderOverviewPage() {
       </section>
       <section class="panel span-12">
         ${panelHeader("Facility-material risk heatmap", "Risk combines incident severity, route delay, and current hours of inventory cover.", '<span class="section-caption">Values show hours of cover</span>')}
-        <div class="panel-body">${renderRiskMatrix(overview.risk_matrix)}</div>
+        <div class="panel-body">${renderRiskMatrix(filteredRiskMatrix(overview.risk_matrix))}</div>
       </section>
     </div>`;
 }
@@ -843,6 +1062,7 @@ function renderNetworkPage() {
       description: "Trace operational dependencies across ports, warehouses, factories, inbound shipments, and modeled response routes.",
       actions: modeControl,
     })}
+    ${renderGlobalFilters()}
     ${kpiStrip([
       { label: "Factories", value: String(summary.facilities), detail: "production nodes" },
       { label: "Warehouses", value: String(summary.warehouses), detail: "transfer-capable nodes" },
@@ -856,18 +1076,18 @@ function renderNetworkPage() {
       </section>
       <aside class="panel network-detail-panel" aria-label="Selected network node">
         ${panelHeader("Node context", "Operational status and route relationships.")}
-        <div class="panel-body" id="network-node-detail">${renderNetworkNodeDetail(selectedNetworkNode())}</div>
+        <div class="panel-body" id="network-node-detail" data-network-node-detail>${renderNetworkNodeDetail(selectedNetworkNode())}</div>
       </aside>
       <section class="panel network-route-panel">
         ${panelHeader("Route register", "Accessible source of truth for every relationship displayed on the map.", `<span class="section-caption">${state.network.routes.filter((route) => state.networkMode === "ALL" || route.route_type === "INBOUND_SHIPMENT").length} routes</span>`)}
-        ${renderRouteTable(state.network)}
+        <div id="route-register-results">${renderRouteTable(state.network)}</div>
       </section>
     </div>`;
 }
 
 function filteredPortfolio() {
   const query = state.portfolioQuery.trim().toLowerCase();
-  return state.portfolio.filter((item) => {
+  return globallyFilteredPortfolio().filter((item) => {
     const severityMatch = state.portfolioSeverity === "ALL" || item.severity === state.portfolioSeverity;
     const haystack = [item.title, item.incident_id, item.facility_name, item.material_name, item.route].join(" ").toLowerCase();
     return severityMatch && (!query || haystack.includes(query));
@@ -883,6 +1103,7 @@ function portfolioToolbar() {
     <div class="segmented-filter" aria-label="Filter incident severity">
       ${["ALL", "CRITICAL", "HIGH", "INFO"].map((severity) => `<button type="button" data-portfolio-severity="${severity}" class="${state.portfolioSeverity === severity ? "is-selected" : ""}" aria-pressed="${state.portfolioSeverity === severity}">${severity === "ALL" ? "All" : sentenceCase(severity)}</button>`).join("")}
     </div>
+    <button class="button button-secondary" type="button" data-export-table="portfolio">${icon("download")}Export CSV</button>
   </div>`;
 }
 
@@ -897,6 +1118,7 @@ function renderIncidentPortfolioPage() {
       description: "Prioritize disruptions across the network, open the evidence chain, and move grounded responses into human approval.",
       summary: `<span class="snapshot-time">${items.length} of ${state.portfolio.length} incidents</span>`,
     })}
+    ${renderGlobalFilters()}
     ${kpiStrip([
       { label: "Active disruptions", value: String(active.length), detail: `${active.filter((item) => item.severity === "CRITICAL").length} critical`, tone: "tone-critical" },
       { label: "Portfolio exposure", value: formatCurrency(exposure, true), detail: "baseline downtime cost" },
@@ -912,10 +1134,19 @@ function renderIncidentPortfolioPage() {
 
 function renderPortfolioResults(items) {
   if (!items.length) return emptyState("No matching incidents", "Adjust the search text or severity filter.");
+  const sorted = sortRows(items, "portfolio", {
+    incident: (item) => item.title,
+    facility: (item) => item.facility_name,
+    cover: (item) => Number(item.hours_of_cover ?? Number.POSITIVE_INFINITY),
+    exposure: (item) => Number(item.baseline_exposure_idr),
+    approval: (item) => item.approval_status,
+    severity: (item) => ({ CRITICAL: 3, HIGH: 2, INFO: 1 }[item.severity] || 0),
+  });
+  const page = paginateRows(sorted, "portfolio");
   return `<div class="table-wrap portfolio-table-wrap">
     <table class="data-table portfolio-table">
-      <thead><tr><th scope="col">Incident</th><th scope="col">Facility / material</th><th scope="col">Inventory cover</th><th scope="col">Downtime exposure</th><th scope="col">Approval</th><th scope="col"><span class="sr-only">Open</span></th></tr></thead>
-      <tbody>${items.map((item) => `<tr>
+      <thead><tr>${sortableHeader("Incident", "portfolio", "incident")}${sortableHeader("Facility / material", "portfolio", "facility")}${sortableHeader("Inventory cover", "portfolio", "cover")}${sortableHeader("Downtime exposure", "portfolio", "exposure")}${sortableHeader("Approval", "portfolio", "approval")}<th scope="col"><span class="sr-only">Open</span></th></tr></thead>
+      <tbody>${page.rows.map((item) => `<tr>
         <td><div class="incident-cell">${severityBadge(item.severity)}<a href="/incidents/${encodeURIComponent(item.incident_id)}" data-link><strong>${escapeHtml(item.title)}</strong><small class="mono">${escapeHtml(item.incident_id)}</small></a></div></td>
         <td><strong>${escapeHtml(item.facility_name)}</strong><small>${escapeHtml(item.material_name)} · ${escapeHtml(item.route)}</small></td>
         <td><strong>${item.hours_of_cover == null ? "N/A" : `${formatNumber(item.hours_of_cover)}h`}</strong><small>${formatNumber(item.usable_quantity)} ${escapeHtml(state.inventory.find((record) => record.material_id === item.material_id)?.unit || "units")} usable</small></td>
@@ -924,7 +1155,7 @@ function renderPortfolioResults(items) {
         <td><a class="row-action" href="/incidents/${encodeURIComponent(item.incident_id)}" data-link aria-label="Open ${escapeHtml(item.title)}">${icon("arrow")}</a></td>
       </tr>`).join("")}</tbody>
     </table>
-  </div>`;
+  </div>${tableFooter("portfolio", sorted.length, page.pages, "incidents")}`;
 }
 
 function findPortfolioItem(incidentId) {
@@ -952,10 +1183,23 @@ function renderIncidentContext(item) {
 
 function scenarioTable(analysis) {
   const scenarios = [analysis.baseline, ...analysis.scenarios];
-  return `<div class="table-wrap scenario-table-wrap">
+  const config = state.tables.scenarios;
+  const filtered = scenarios.filter((scenario) => config.filter === "ALL" || (config.filter === "FEASIBLE" ? scenario.feasible : !scenario.feasible));
+  const sorted = sortRows(filtered, "scenarios", {
+    scenario: (scenario) => scenario.name,
+    response: (scenario) => Number(scenario.cost_breakdown.logistics_and_purchase_idr),
+    downtime: (scenario) => Number(scenario.simulation.downtime_hours),
+    total: (scenario) => Number(scenario.cost_breakdown.total_idr),
+    feasibility: (scenario) => scenario.feasible ? 1 : 0,
+  });
+  const page = paginateRows(sorted, "scenarios");
+  return `<div class="table-actions">
+      <label class="select-field">Feasibility<select data-scenario-filter aria-label="Filter scenarios by feasibility"><option value="ALL">All scenarios</option><option value="FEASIBLE"${config.filter === "FEASIBLE" ? " selected" : ""}>Feasible</option><option value="FAILED"${config.filter === "FAILED" ? " selected" : ""}>Constraint failed</option></select></label>
+      <button class="button button-secondary" type="button" data-export-table="scenarios">${icon("download")}Export CSV</button>
+    </div><div class="table-wrap scenario-table-wrap">
     <table class="data-table scenario-table">
-      <thead><tr><th scope="col">Scenario</th><th scope="col">Response cost</th><th scope="col">Downtime</th><th scope="col">Total modeled impact</th><th scope="col">Feasibility</th></tr></thead>
-      <tbody>${scenarios.map((scenario) => {
+      <thead><tr>${sortableHeader("Scenario", "scenarios", "scenario")}${sortableHeader("Response cost", "scenarios", "response")}${sortableHeader("Downtime", "scenarios", "downtime")}${sortableHeader("Total modeled impact", "scenarios", "total")}${sortableHeader("Feasibility", "scenarios", "feasibility")}</tr></thead>
+      <tbody>${page.rows.map((scenario) => {
         const recommended = scenario.scenario_id === analysis.recommended_scenario_id;
         return `<tr class="${recommended ? "is-recommended" : ""}">
           <td data-label="Scenario"><div class="scenario-name"><strong>${escapeHtml(scenario.name)}</strong><small>${escapeHtml(scenario.scenario_id)}</small>${recommended ? '<span class="recommended-label">Recommended</span>' : ""}</div></td>
@@ -966,7 +1210,7 @@ function scenarioTable(analysis) {
         </tr>`;
       }).join("")}</tbody>
     </table>
-  </div>`;
+  </div>${tableFooter("scenarios", sorted.length, page.pages, "scenarios")}`;
 }
 
 function renderEvidencePanel(analysis, recommended) {
@@ -1027,24 +1271,17 @@ function renderNoAnalysis(item) {
   </section>`;
 }
 
-function renderWorkspaceSectionNav(standalone) {
-  const links = [
-    ["incident-summary", "Summary"],
-    ["inventory-projection", "Inventory"],
-    ["scenario-frontier", "Scenarios"],
-    ["response-governance", "Governance"],
-    ...(!standalone ? [["incident-audit", "Audit"]] : []),
-  ];
-  return `<nav class="section-nav" aria-label="Incident workspace sections">${links.map(([target, label], index) => `<a href="#${target}" data-section-link${index === 0 ? ' aria-current="location"' : ""}>${label}</a>`).join("")}</nav>`;
+function renderWorkspaceSectionNav(item, standalone) {
+  if (standalone) return "";
+  const links = [["summary", "Summary"], ["inventory", "Inventory"], ["scenarios", "Scenarios"], ["governance", "Governance"], ["audit", "Audit"]];
+  return `<nav class="section-nav workspace-tabs" aria-label="Incident workspace sections">${links.map(([view, label]) => `<a href="/incidents/${encodeURIComponent(item.incident_id)}?view=${view}" data-incident-view="${view}" class="${state.incidentView === view ? "is-active" : ""}"${state.incidentView === view ? ' aria-current="page"' : ""}>${label}</a>`).join("")}</nav>`;
 }
 
 function renderAnalysisSections(item, analysis, incidentDrafts, incidentAudit, standalone = false) {
   const recommended = findRecommendedScenario(analysis);
   const avoided = Math.max(0, analysis.baseline.simulation.downtime_hours - recommended.simulation.downtime_hours);
   const scenarioLink = standalone ? "" : `<a class="button button-secondary" href="/scenarios/${encodeURIComponent(analysis.analysis_id)}" data-link>Open scenario view</a>`;
-  return `
-    ${renderWorkspaceSectionNav(standalone)}
-    <section class="recommendation-banner" id="incident-summary">
+  const summaryView = `<section class="recommendation-banner" id="incident-summary">
       <div class="recommendation-mark">${icon(recommended.feasible ? "check" : "alert")}</div>
       <div><span class="eyebrow">${recommended.feasible ? "Recommended response" : "Damage limitation response"} · ${analysis.mode === "live_ai" ? "Live SAP AI Core" : analysis.mode === "fallback" ? "AI fallback" : "Deterministic"}</span><h2>${escapeHtml(recommended.name)}</h2><p>${escapeHtml(analysis.recommendation_rationale)}</p></div>
       <div class="recommendation-cost"><span>Total modeled impact</span><strong>${formatCurrency(recommended.cost_breakdown.total_idr, true)}</strong><small>${formatCurrency(recommended.cost_breakdown.logistics_and_purchase_idr, true)} response cost</small></div>
@@ -1055,40 +1292,14 @@ function renderAnalysisSections(item, analysis, incidentDrafts, incidentAudit, s
       { label: "Stockout", value: analysis.stockout_at ? formatDateTime(analysis.stockout_at) : "Prevented", detail: `${formatNumber(analysis.hours_of_cover)}h starting cover` },
       { label: "Decision state", value: incidentDrafts[0] ? sentenceCase(incidentDrafts[0].status) : "Not packaged", detail: analysis.requires_approval ? "manager approval required" : "standard review" },
     ])}
-    <section class="panel content-panel" id="impact-chain">
-      ${panelHeader("Incident-to-production impact chain", "Trace the operational cause, affected flow, production exposure, and selected response.")}
-      <div class="panel-body">${renderImpactChain(item, analysis, recommended)}</div>
-    </section>
-    <div class="analysis-grid">
-      <section class="panel span-8" id="inventory-projection">
-        ${panelHeader("Hourly inventory projection", "Baseline versus recommended response, including safety-stock threshold and stockout window.", '<span class="section-caption">Hourly resolution</span>')}
-        <div class="panel-body">${renderInventoryProjection(analysis, recommended)}</div>
-      </section>
-      <section class="panel span-4" id="allocation-composition">
-        ${panelHeader("Mitigation allocation", "Quantity, source, arrival timing, and modeled reliability.")}
-        <div class="panel-body">${renderAllocationComposition(recommended)}</div>
-      </section>
-      <section class="panel span-7" id="scenario-frontier">
-        ${panelHeader("Cost versus downtime frontier", "Every bounded response option remains visible, including constraint failures.", scenarioLink)}
-        <div class="panel-body">${renderScenarioFrontier(analysis)}</div>
-      </section>
-      <section class="panel span-5" id="decision-evidence">
-        ${panelHeader("Decision evidence", "Constraints and residual risks for the selected response.")}
-        <div class="panel-body">${renderEvidencePanel(analysis, recommended)}</div>
-      </section>
-      <section class="panel span-12" id="scenario-comparison">
-        ${panelHeader("Scenario comparison", "Precise values behind the frontier visualization.", `<span class="section-caption">${analysis.scenarios.length + 1} evaluated scenarios</span>`)}
-        ${scenarioTable(analysis)}
-      </section>
-      <section class="panel span-12" id="response-governance">
-        ${panelHeader("Response governance", "Create a local review package, then require an explicit human decision.")}
-        <div class="panel-body">${renderResponseGovernance(item, analysis, recommended, incidentDrafts)}</div>
-      </section>
-      ${standalone ? "" : `<section class="panel span-12" id="incident-audit">
-        ${panelHeader("Incident audit trail", "System and human actions recorded for this workspace.", `<a class="text-link" href="/audit" data-link>Open audit explorer ${icon("arrow")}</a>`)}
-        <div class="panel-body">${renderIncidentAudit(incidentAudit)}</div>
-      </section>`}
-    </div>`;
+    <section class="panel content-panel" id="impact-chain">${panelHeader("Incident-to-production impact chain", "Trace the operational cause, affected flow, production exposure, and selected response.")}<div class="panel-body">${renderImpactChain(item, analysis, recommended)}</div></section>`;
+  const inventoryView = `<div class="analysis-grid"><section class="panel span-12" id="inventory-projection">${panelHeader("Hourly inventory projection", "Baseline versus recommended response, including safety-stock threshold and stockout window.", '<span class="section-caption">Interactive hourly model</span>')}<div class="panel-body">${renderInventoryProjection(analysis, recommended)}</div></section><section class="panel span-12" id="allocation-composition">${panelHeader("Mitigation allocation", "Quantity, source, arrival timing, and modeled reliability.")}<div class="panel-body">${renderAllocationComposition(recommended)}</div></section></div>`;
+  const scenariosView = `<div class="analysis-grid"><section class="panel span-12" id="scenario-frontier">${panelHeader("Cost versus downtime frontier", "Select a scenario point to inspect cost, downtime, allocation, and evidence.", scenarioLink)}<div class="panel-body">${renderScenarioFrontier(analysis)}</div></section><section class="panel span-12" id="decision-evidence">${panelHeader("Recommended decision evidence", "Constraints and residual risks for the recommended response.")}<div class="panel-body">${renderEvidencePanel(analysis, recommended)}</div></section><section class="panel span-12" id="scenario-comparison">${panelHeader("Scenario comparison", "Sortable, filterable values behind the frontier visualization.", `<span class="section-caption">${analysis.scenarios.length + 1} evaluated scenarios</span>`)}<div id="scenario-table-results">${scenarioTable(analysis)}</div></section></div>`;
+  const governanceView = `<div class="analysis-grid"><section class="panel span-12" id="response-governance">${panelHeader("Response governance", "Create a local review package, then require an explicit human decision.")}<div class="panel-body">${renderResponseGovernance(item, analysis, recommended, incidentDrafts)}</div></section></div>`;
+  const auditView = `<div class="analysis-grid"><section class="panel span-12" id="incident-audit">${panelHeader("Incident audit trail", "System and human actions recorded for this workspace.", `<a class="text-link" href="/audit" data-link>Open audit explorer ${icon("arrow")}</a>`)}<div class="panel-body">${renderIncidentAudit(incidentAudit)}</div></section></div>`;
+  const views = { summary: summaryView, inventory: inventoryView, scenarios: scenariosView, governance: governanceView, audit: auditView };
+  const activeView = standalone ? "scenarios" : state.incidentView;
+  return `${renderWorkspaceSectionNav(item, standalone)}<div class="workspace-view" data-workspace-view="${activeView}">${views[activeView] || summaryView}</div>`;
 }
 
 async function renderIncidentWorkspace(incidentId) {
@@ -1101,6 +1312,9 @@ async function renderIncidentWorkspace(incidentId) {
     api(`/api/v1/audit?incident_id=${encodeURIComponent(incidentId)}`),
   ]);
   state.analysis = analysisPayload.analysis;
+  const requestedView = new URLSearchParams(window.location.search).get("view");
+  if (["summary", "inventory", "scenarios", "governance", "audit"].includes(requestedView)) state.incidentView = requestedView;
+  saveUiPreferences();
   const incidentDrafts = draftPayload.drafts;
   const incidentAudit = auditPayload.records;
   ui.pageRoot.innerHTML = `
@@ -1206,12 +1420,21 @@ function filteredAudit() {
 }
 
 function renderAuditResults() {
-  const records = [...filteredAudit()].reverse();
+  const records = filteredAudit();
   if (!records.length) return emptyState("No matching audit records", "Adjust the search text to include an action, actor, entity, or incident.");
+  const sorted = sortRows(records, "audit", {
+    timestamp: (record) => new Date(record.timestamp).getTime(),
+    action: (record) => record.action,
+    actor: (record) => record.actor,
+    entity: (record) => record.entity_id,
+    incident: (record) => record.incident_id || "",
+    summary: (record) => record.summary,
+  });
+  const page = paginateRows(sorted, "audit");
   return `<div class="table-wrap">
     <table class="data-table audit-table">
-      <thead><tr><th scope="col">Timestamp</th><th scope="col">Action</th><th scope="col">Actor</th><th scope="col">Entity</th><th scope="col">Incident</th><th scope="col">Summary</th></tr></thead>
-      <tbody>${records.map((record) => `<tr>
+      <thead><tr>${sortableHeader("Timestamp", "audit", "timestamp")}${sortableHeader("Action", "audit", "action")}${sortableHeader("Actor", "audit", "actor")}${sortableHeader("Entity", "audit", "entity")}${sortableHeader("Incident", "audit", "incident")}${sortableHeader("Summary", "audit", "summary")}</tr></thead>
+      <tbody>${page.rows.map((record) => `<tr>
         <td><time datetime="${escapeHtml(record.timestamp)}">${escapeHtml(formatDateTime(record.timestamp))}</time></td>
         <td>${stateBadge(record.action)}</td>
         <td>${escapeHtml(record.actor)}</td>
@@ -1220,7 +1443,7 @@ function renderAuditResults() {
         <td>${escapeHtml(record.summary)}</td>
       </tr>`).join("")}</tbody>
     </table>
-  </div>`;
+  </div>${tableFooter("audit", sorted.length, page.pages, "records")}`;
 }
 
 function renderAuditPage() {
@@ -1241,7 +1464,7 @@ function renderAuditPage() {
     ])}
     <section class="panel">
       ${panelHeader("Recorded events", "Search by action, actor, entity, incident ID, or event summary.")}
-      <div class="audit-toolbar"><label class="search-field wide" for="audit-search">${icon("search")}<span class="sr-only">Search audit records</span><input id="audit-search" type="search" value="${escapeHtml(state.auditQuery)}" placeholder="Search audit trail" autocomplete="off"></label></div>
+      <div class="audit-toolbar"><label class="search-field wide" for="audit-search">${icon("search")}<span class="sr-only">Search audit records</span><input id="audit-search" type="search" value="${escapeHtml(state.auditQuery)}" placeholder="Search audit trail" autocomplete="off"></label><button class="button button-secondary" type="button" data-export-table="audit">${icon("download")}Export CSV</button></div>
       <div id="audit-results">${renderAuditResults()}</div>
     </section>`;
 }
@@ -1534,18 +1757,23 @@ function closeMobileNav() {
 function selectNetworkNode(nodeId) {
   state.selectedNodeId = nodeId;
   document.querySelectorAll("[data-network-node]").forEach((node) => node.classList.toggle("is-selected", node.dataset.networkNode === nodeId));
-  const detail = document.querySelector("#network-node-detail");
-  if (detail) detail.innerHTML = renderNetworkNodeDetail(selectedNetworkNode());
+  document.querySelectorAll("[data-network-node-detail]").forEach((detail) => { detail.innerHTML = renderNetworkNodeDetail(selectedNetworkNode()); });
 }
 
 function applyNetworkView() {
-  const map = document.querySelector("[data-network-map]");
-  const viewport = document.querySelector("#network-viewport");
-  if (!map || !viewport) return;
-  const viewBox = map.getAttribute("viewBox").split(/\s+/).map(Number);
-  viewport.setAttribute("transform", networkTransform(viewBox[2], viewBox[3]));
-  const output = document.querySelector(".map-toolbar output");
-  if (output) output.textContent = `${Math.round(state.networkZoom * 100)}%`;
+  document.querySelectorAll("[data-network-map]").forEach((map) => {
+    const viewport = map.querySelector("[data-network-viewport]");
+    if (!viewport) return;
+    const viewBox = map.getAttribute("viewBox").split(/\s+/).map(Number);
+    viewport.setAttribute("transform", networkTransform(viewBox[2], viewBox[3]));
+  });
+  document.querySelectorAll("[data-map-zoom-output]").forEach((output) => { output.textContent = `${Math.round(state.networkZoom * 100)}%`; });
+}
+
+function openNetworkMapDialog() {
+  ui.networkMapDialogBody.innerHTML = `<div class="fullscreen-map-layout"><div>${renderNetworkMap(state.network, false, true)}</div><aside class="panel fullscreen-node-detail" data-network-node-detail>${renderNetworkNodeDetail(selectedNetworkNode())}</aside></div>`;
+  ui.networkMapDialog.showModal();
+  ui.networkMapDialog.querySelector("[data-network-map]")?.focus();
 }
 
 function setNetworkZoom(delta) {
@@ -1587,7 +1815,130 @@ function syncSectionNavigation() {
   });
 }
 
+function refreshTable(tableName) {
+  if (tableName === "portfolio") {
+    const target = document.querySelector("#portfolio-results");
+    if (target) target.innerHTML = renderPortfolioResults(filteredPortfolio());
+  } else if (tableName === "routes") {
+    const target = document.querySelector("#route-register-results");
+    if (target) target.innerHTML = renderRouteTable(state.network);
+  } else if (tableName === "scenarios") {
+    const target = document.querySelector("#scenario-table-results");
+    if (target && state.analysis) target.innerHTML = scenarioTable(state.analysis);
+  } else if (tableName === "audit") {
+    const target = document.querySelector("#audit-results");
+    if (target) target.innerHTML = renderAuditResults();
+  }
+}
+
+function exportTable(tableName) {
+  if (tableName === "portfolio") {
+    downloadCsv("nsra-incidents.csv", [
+      { label: "Incident ID", value: (row) => row.incident_id }, { label: "Title", value: (row) => row.title }, { label: "Severity", value: (row) => row.severity }, { label: "Facility", value: (row) => row.facility_name }, { label: "Material", value: (row) => row.material_name }, { label: "Hours of cover", value: (row) => row.hours_of_cover }, { label: "Downtime hours", value: (row) => row.baseline_downtime_hours }, { label: "Exposure IDR", value: (row) => row.baseline_exposure_idr }, { label: "Approval", value: (row) => row.approval_status },
+    ], filteredPortfolio());
+  } else if (tableName === "routes") {
+    const config = state.tables.routes;
+    const query = config.query.trim().toLowerCase();
+    const rows = state.network.routes.filter((route) => {
+      const haystack = [route.route_id, route.label, route.material_id, route.source_id, route.destination_id].join(" ").toLowerCase();
+      return (state.networkMode === "ALL" || route.route_type === "INBOUND_SHIPMENT") && (config.filter === "ALL" || route.status === config.filter) && (state.globalFilters.material === "ALL" || route.material_id === state.globalFilters.material) && (state.globalFilters.facility === "ALL" || route.source_id === state.globalFilters.facility || route.destination_id === state.globalFilters.facility) && (!query || haystack.includes(query));
+    });
+    downloadCsv("nsra-network-routes.csv", [{ label: "Route ID", value: (row) => row.route_id }, { label: "Route", value: (row) => row.label }, { label: "Type", value: (row) => row.route_type }, { label: "Material", value: (row) => row.material_id }, { label: "Delay hours", value: (row) => row.delay_hours }, { label: "Status", value: (row) => row.status }, { label: "Exposure IDR", value: (row) => row.exposure_idr }], rows);
+  } else if (tableName === "scenarios" && state.analysis) {
+    const config = state.tables.scenarios;
+    const rows = [state.analysis.baseline, ...state.analysis.scenarios].filter((scenario) => config.filter === "ALL" || (config.filter === "FEASIBLE" ? scenario.feasible : !scenario.feasible));
+    downloadCsv("nsra-scenarios.csv", [{ label: "Scenario ID", value: (row) => row.scenario_id }, { label: "Scenario", value: (row) => row.name }, { label: "Response cost IDR", value: (row) => row.cost_breakdown.logistics_and_purchase_idr }, { label: "Downtime hours", value: (row) => row.simulation.downtime_hours }, { label: "Total impact IDR", value: (row) => row.cost_breakdown.total_idr }, { label: "Feasible", value: (row) => row.feasible }], rows);
+  } else if (tableName === "audit") {
+    downloadCsv("nsra-audit.csv", [{ label: "Timestamp", value: (row) => row.timestamp }, { label: "Action", value: (row) => row.action }, { label: "Actor", value: (row) => row.actor }, { label: "Entity", value: (row) => `${row.entity_type}:${row.entity_id}` }, { label: "Incident", value: (row) => row.incident_id }, { label: "Summary", value: (row) => row.summary }], filteredAudit());
+  } else if (tableName === "inventory" && state.analysis) {
+    const recommended = findRecommendedScenario(state.analysis);
+    const baseline = new Map(state.analysis.baseline.simulation.inventory_by_time.map((point) => [point.hour, point]));
+    const response = recommended.simulation.inventory_by_time;
+    downloadCsv("nsra-inventory-projection.csv", [{ label: "Hour", value: (row) => row.hour }, { label: "Baseline quantity", value: (row) => baseline.get(row.hour)?.quantity }, { label: "Recommended quantity", value: (row) => row.quantity }, { label: "Arrival quantity", value: (row) => row.arrival_quantity }, { label: "Unit", value: (row) => row.unit }], response);
+  }
+}
+
+function positionTooltip(tooltip, target, event) {
+  const shell = target.closest(".chart-shell");
+  if (!shell || !tooltip) return;
+  const shellRect = shell.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const left = event?.clientX ? event.clientX - shellRect.left : targetRect.left - shellRect.left + targetRect.width / 2;
+  const top = event?.clientY ? event.clientY - shellRect.top : targetRect.top - shellRect.top;
+  tooltip.style.left = `${Math.max(12, Math.min(shellRect.width - 220, left + 12))}px`;
+  tooltip.style.top = `${Math.max(12, top - 78)}px`;
+}
+
+function showInventoryTooltip(target, event) {
+  const tooltip = target.closest("[data-inventory-chart]")?.querySelector("[data-inventory-tooltip]");
+  if (!tooltip) return;
+  tooltip.innerHTML = `<strong>Hour +${escapeHtml(target.dataset.hour)}</strong><span>Baseline <b>${formatNumber(target.dataset.baseline)} ${escapeHtml(target.dataset.unit)}</b></span><span>Recommended <b>${formatNumber(target.dataset.recommended)} ${escapeHtml(target.dataset.unit)}</b></span>${target.dataset.event ? `<small>${escapeHtml(target.dataset.event)}</small>` : ""}`;
+  tooltip.hidden = false;
+  positionTooltip(tooltip, target, event);
+}
+
+function showFrontierTooltip(target, event) {
+  const tooltip = target.closest(".frontier-chart-shell")?.querySelector("[data-frontier-tooltip]");
+  if (!tooltip) return;
+  tooltip.innerHTML = `<strong>${escapeHtml(target.dataset.scenarioIndex)} · ${escapeHtml(target.dataset.scenarioName)}</strong><span>${escapeHtml(target.dataset.scenarioCost)} response</span><span>${escapeHtml(target.dataset.scenarioDowntime)} downtime</span><small>${escapeHtml(target.dataset.scenarioStatus)}</small>`;
+  tooltip.hidden = false;
+  positionTooltip(tooltip, target, event);
+}
+
+function hideChartTooltip(target) {
+  const tooltip = target.closest(".chart-shell")?.querySelector(".chart-tooltip");
+  if (tooltip) tooltip.hidden = true;
+}
+
 document.addEventListener("click", (event) => {
+  const incidentViewLink = event.target.closest("[data-incident-view]");
+  if (incidentViewLink) {
+    event.preventDefault();
+    state.incidentView = incidentViewLink.dataset.incidentView;
+    saveUiPreferences();
+    navigate(incidentViewLink.getAttribute("href"));
+    return;
+  }
+  const sortButton = event.target.closest("[data-sort-table]");
+  if (sortButton) {
+    const config = state.tables[sortButton.dataset.sortTable];
+    if (config.sortKey === sortButton.dataset.sortKey) config.direction = config.direction === "asc" ? "desc" : "asc";
+    else { config.sortKey = sortButton.dataset.sortKey; config.direction = "asc"; }
+    config.page = 1;
+    refreshTable(sortButton.dataset.sortTable);
+    return;
+  }
+  const pageButton = event.target.closest("[data-page-table]");
+  if (pageButton) {
+    state.tables[pageButton.dataset.pageTable].page += Number(pageButton.dataset.pageDelta);
+    refreshTable(pageButton.dataset.pageTable);
+    return;
+  }
+  const exportButton = event.target.closest("[data-export-table]");
+  if (exportButton) { exportTable(exportButton.dataset.exportTable); return; }
+  const rangeButton = event.target.closest("[data-inventory-range]");
+  if (rangeButton && state.analysis) {
+    state.inventoryRange = rangeButton.dataset.inventoryRange;
+    saveUiPreferences();
+    const target = document.querySelector("[data-inventory-chart]");
+    if (target) target.outerHTML = renderInventoryProjection(state.analysis, findRecommendedScenario(state.analysis));
+    return;
+  }
+  const scenarioPoint = event.target.closest("[data-scenario-point]");
+  if (scenarioPoint && state.analysis) {
+    state.selectedScenarioId = scenarioPoint.dataset.scenarioPoint;
+    const target = document.querySelector("#scenario-frontier-body");
+    if (target) target.outerHTML = renderScenarioFrontier(state.analysis);
+    return;
+  }
+  if (event.target.closest("[data-clear-global-filters]")) {
+    state.globalFilters = { facility: "ALL", material: "ALL", severity: "ALL" };
+    saveUiPreferences();
+    renderRoute();
+    return;
+  }
+  if (event.target.closest("[data-map-fullscreen]")) { openNetworkMapDialog(); return; }
+  if (event.target.closest("[data-close-network-map]")) { ui.networkMapDialog.close(); return; }
   const sectionLink = event.target.closest("[data-section-link]");
   if (sectionLink) {
     event.preventDefault();
@@ -1616,6 +1967,7 @@ document.addEventListener("click", (event) => {
   const severityButton = event.target.closest("[data-portfolio-severity]");
   if (severityButton) {
     state.portfolioSeverity = severityButton.dataset.portfolioSeverity;
+    state.tables.portfolio.page = 1;
     renderIncidentPortfolioPage();
     return;
   }
@@ -1629,6 +1981,7 @@ document.addEventListener("click", (event) => {
   if (modeButton) {
     state.networkMode = modeButton.dataset.networkMode;
     state.selectedNodeId = null;
+    state.tables.routes.page = 1;
     renderNetworkPage();
     return;
   }
@@ -1648,17 +2001,77 @@ document.addEventListener("click", (event) => {
 document.addEventListener("input", (event) => {
   if (event.target.id === "portfolio-search") {
     state.portfolioQuery = event.target.value;
+    state.tables.portfolio.page = 1;
     const results = document.querySelector("#portfolio-results");
     if (results) results.innerHTML = renderPortfolioResults(filteredPortfolio());
   }
+  if (event.target.id === "route-search") {
+    state.tables.routes.query = event.target.value;
+    state.tables.routes.page = 1;
+    const results = document.querySelector("#route-register-results");
+    if (results) results.innerHTML = renderRouteTable(state.network);
+    document.querySelector("#route-search")?.focus();
+  }
   if (event.target.id === "audit-search") {
     state.auditQuery = event.target.value;
+    state.tables.audit.page = 1;
     const results = document.querySelector("#audit-results");
     if (results) results.innerHTML = renderAuditResults();
   }
 });
 
+document.addEventListener("change", (event) => {
+  if (event.target.matches("[data-global-filter]")) {
+    state.globalFilters[event.target.dataset.globalFilter] = event.target.value;
+    saveUiPreferences();
+    renderRoute();
+  } else if (event.target.matches("[data-page-size]")) {
+    const config = state.tables[event.target.dataset.pageSize];
+    config.pageSize = Number(event.target.value);
+    config.page = 1;
+    refreshTable(event.target.dataset.pageSize);
+  } else if (event.target.matches("[data-route-status]")) {
+    state.tables.routes.filter = event.target.value;
+    state.tables.routes.page = 1;
+    refreshTable("routes");
+  } else if (event.target.matches("[data-scenario-filter]")) {
+    state.tables.scenarios.filter = event.target.value;
+    state.tables.scenarios.page = 1;
+    refreshTable("scenarios");
+  }
+});
+
+document.addEventListener("mouseover", (event) => {
+  const inventoryHit = event.target.closest?.("[data-inventory-hit]");
+  if (inventoryHit) showInventoryTooltip(inventoryHit, event);
+  const frontierPoint = event.target.closest?.("[data-scenario-point]");
+  if (frontierPoint) showFrontierTooltip(frontierPoint, event);
+});
+
+document.addEventListener("mouseout", (event) => {
+  const target = event.target.closest?.("[data-inventory-hit], [data-scenario-point]");
+  if (target && !target.contains(event.relatedTarget)) hideChartTooltip(target);
+});
+
+document.addEventListener("focusin", (event) => {
+  const inventoryHit = event.target.closest?.("[data-inventory-hit]");
+  if (inventoryHit) showInventoryTooltip(inventoryHit);
+  const frontierPoint = event.target.closest?.("[data-scenario-point]");
+  if (frontierPoint) showFrontierTooltip(frontierPoint);
+});
+
+document.addEventListener("focusout", (event) => {
+  const target = event.target.closest?.("[data-inventory-hit], [data-scenario-point]");
+  if (target) hideChartTooltip(target);
+});
+
 document.addEventListener("keydown", (event) => {
+  const scenarioPoint = event.target.closest?.("[data-scenario-point]");
+  if (scenarioPoint && (event.key === "Enter" || event.key === " ")) {
+    event.preventDefault();
+    scenarioPoint.click();
+    return;
+  }
   const node = event.target.closest?.("[data-network-node]");
   if (node && (event.key === "Enter" || event.key === " ")) {
     event.preventDefault();
@@ -1729,7 +2142,7 @@ ui.cancelResetButton.addEventListener("click", () => {
 });
 ui.confirmResetButton.addEventListener("click", resetWorkspace);
 document.querySelectorAll("[data-decision]").forEach((button) => button.addEventListener("click", () => submitDecision(button.dataset.decision, button)));
-[ui.environmentDialog, ui.decisionDialog].forEach((dialog) => dialog.addEventListener("click", (event) => {
+[ui.environmentDialog, ui.decisionDialog, ui.networkMapDialog].forEach((dialog) => dialog.addEventListener("click", (event) => {
   if (event.target === dialog) dialog.close();
 }));
 window.addEventListener("popstate", () => renderRoute({ focus: true }));
