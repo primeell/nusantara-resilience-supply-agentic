@@ -1,26 +1,43 @@
 # Team tasks and ownership
 
-Team: **A Cruel Angel's Thesis** — two developers. Remote issue/branch creation
-tetap dilakukan manual setelah review owner.
+**Team:** A Cruel Angel's Thesis
 
-| Priority | Owner | Ticket | Files | Dependency | Acceptance check |
-|---|---|---|---|---|---|
-| P0 | Developer 1 | Agent orchestration review | agent/, tests/test_agent.py | Stable schemas | Tool allowlist, grounded schema, timeout/invalid-output fallback tests pass |
-| P0 | Developer 2 | Engine assumption review | backend/inventory.py, backend/optimization.py, data/demo_seed.json | API contract | Exact 36h coverage, 60h baseline outage, feasibility and conservation tests pass |
-| P0 | Shared | Contract and release review | backend/schemas.py, backend/api.py, docs/API_CONTRACT.md | Both P0 reviews | OpenAPI loads; API tests and smoke workflow pass |
-| P0 | Shared | Demo rehearsal | dashboard/, scripts/, docs/DEMO_SCRIPT.md | Release review | Fresh reset completes the 3–5 minute flow without code edits |
-| P1 | Developer 1 | Controlled SAP AI live verification | agent/sap_ai_client.py, docs/EVALUATION.md | Owner authorization and valid local config | One low-cost call succeeds, no secret in output, result labeled LIVE VERIFIED |
-| P1 | Developer 1 | AWS live event proof | integrations/aws_events.py | Explicit cloud authorization | One permitted event reaches backend with evidence; otherwise retain LOCAL EMULATED label |
-| P1 | Developer 2 | Calibrate real historical CSV | data/, validation script | Approved data source and units | Provenance, schema, unit checks, and anonymization documented |
-| P2 | Shared | Persistent demo store decision | repository implementation | Post-hackathon requirements | SQLite migration plan and concurrency behavior reviewed before replacing in-memory store |
-| P2 | Developer 1 | Joule capability feasibility | docs/INTEGRATION_STATUS.md | Tenant permission and product docs | End-user invocation proven before any deployed claim |
+**Planning source:** [ROADMAP.md](ROADMAP.md)
 
-## Branch guidance
+This file converts the product roadmap into a practical two-developer work split. Owners can be changed during planning; acceptance criteria should not be weakened without review.
 
-- Developer 1: feature/agent-orchestration
-- Developer 2: feature/supply-chain-engine
-- Shared changes: short-lived branch, both developers review before merge.
+## Current release tasks
 
-Do not force-push shared branches. Contracts, credential handling, backend entry
-point, approval policy, and launch scripts require human review. This repository
-session does not commit, push, merge, deploy, or invite collaborators.
+| Priority | Suggested owner | Work item | Main scope | Acceptance check |
+|---|---|---|---|---|
+| P0 | Shared | Provision managed PostgreSQL | Cloud account, `.env`, deployment runtime | TLS connection succeeds; secrets remain private |
+| P0 | Developer 1 | Configure Cloud Foundry runtime | `manifest.yml`, deployment scripts, BTP | App reports `postgresql` and `durable-cloud` |
+| P0 | Developer 2 | Validate state migration | Repository, migration tool, workflow | State survives restage and row counts reconcile |
+| P0 | Shared | Protect mutation routes | Authentication, roles, reset policy | Anonymous mutation is denied; planner cannot self-approve |
+| P0 | Shared | Deploy and rehearse current UI | Frontend, API, demo script | Current navigation/charts run on the public revision |
+| P1 | Developer 1 | Harden Joule A2A access | Destination, A2A, tenant capability | Authenticated tenant call succeeds after redeploy |
+| P1 | Developer 1 | Deploy AWS event path | EventBridge, Lambda, IAM, DLQ | One live event creates exactly one incident |
+| P1 | Developer 2 | Prepare governed historical extracts | Data contracts and validation | Provenance, units, anonymization, and quality report pass |
+| P1 | Developer 2 | Add browser automation | UI and test pipeline | Critical desktop/mobile workflows pass unattended |
+| P1 | Shared | Add observability and CI gates | Logs, metrics, alerts, pipeline | Release is blocked on failed tests/security checks |
+| P2 | Shared | Calibrate and backtest optimizer | Engine, data, evaluation | Results are compared with historical outcomes |
+| P2 | Shared | Design controlled ERP writeback | SAP adapter, approval, audit | Sandbox-only, idempotent, authenticated flow is approved |
+
+## Working agreement
+
+- Create a short-lived branch for one coherent change.
+- Run tests and the security gate before opening a pull request.
+- Require review for schemas, approval policy, credential handling, deployment files, and integration behavior.
+- Keep external-integration evidence in `INTEGRATION_STATUS.md` and test evidence in `EVALUATION.md`.
+- Never label an integration live based only on configuration or login success.
+- Do not force-push a shared branch or commit secrets.
+
+## Release review checklist
+
+- [ ] All automated tests pass.
+- [ ] Secret scan, dependency consistency, and vulnerability audit pass.
+- [ ] Smoke workflow passes from a clean reset.
+- [ ] `/api/v1/status` reports the intended storage and integration policy.
+- [ ] The application survives a restart/restage without losing required state.
+- [ ] Joule and any live integration are reverified after deployment.
+- [ ] Documentation status and evidence dates are updated.

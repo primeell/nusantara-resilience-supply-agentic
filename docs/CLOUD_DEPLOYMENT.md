@@ -3,6 +3,11 @@
 This runbook deploys NSRA without placing SAP credentials in Git, shell history,
 the manifest, or command output.
 
+> **Current deployment note (2026-10-13):** the public route is healthy, but
+> `/api/v1/status` still reports SQLite with `ephemeral-instance` scope. Do not
+> treat the running revision as durably deployed. Provision PostgreSQL, protect
+> mutation routes, and deploy the current branch using this runbook.
+
 ## Fixed target
 
 - API: `https://api.cf.ap10.hana.ondemand.com`

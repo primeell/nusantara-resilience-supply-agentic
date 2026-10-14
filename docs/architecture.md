@@ -62,6 +62,9 @@ EventBridge-compatible JSON      First-party web application
 ### Deployment status
 
 - Local application and API: **MOCK VERIFIED**.
+- Public Cloud Foundry route: **HEALTHY**, but the revision verified on
+  2026-10-13 still reports ephemeral SQLite and must be replaced by the
+  PostgreSQL-configured current branch.
 - SAP AI Core client and offline fallback: **LIVE VERIFIED IN CLOUD**.
 - PostgreSQL adapter, fail-closed cloud policy, TLS connection check, and
   SQLite migration helper: implemented; managed database provisioning remains

@@ -43,8 +43,8 @@ analysis normal ditangani sebagai fallback, bukan menggagalkan kalkulasi.
 ### GET /api/v1/status
 
 Readiness aman: versi, mode, klasifikasi data, flag konfigurasi SAP (boolean
-tanpa nilai), status emulasi AWS, state_store SQLite/persistent, dan
-real_transactions_enabled: false.
+tanpa nilai), status emulasi AWS, state store aktif (SQLite lokal atau
+PostgreSQL cloud), persistence scope, dan `real_transactions_enabled: false`.
 
 ### GET /api/v1/overview
 
@@ -57,8 +57,8 @@ mutable state saat ini.
 
 Mengembalikan location nodes (port, factory, warehouse, supplier), WGS84
 reference coordinates, status node, inbound shipment routes, mitigation routes,
-delay/lead time, dan modeled exposure/cost. Peta frontend bersifat schematic;
-route table adalah accessible source of truth.
+delay/lead time, dan modeled exposure/cost. Frontend memakai geometri Indonesia
+yang terversi, interaksi node/rute, dan route table sebagai accessible source of truth.
 
 ### GET /api/v1/portfolio
 

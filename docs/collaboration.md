@@ -1,56 +1,92 @@
-# Collaboration and security
+# Collaboration and repository workflow
 
-## Two-laptop workflow
+This project uses short-lived branches and pull requests to protect `main`, preserve review history, and prevent one developer's local environment from affecting another's.
 
-Each developer clones the private repository into a separate local directory, creates their own `.venv`, and maintains their own ignored `.env`. Developers never copy access tokens, credential JSON, or personal SAP IAS passwords between laptops.
+## Workstation isolation
 
-The team may use the same team-level SAP AI Core service credential only if the organizer explicitly permits it. Each laptop independently requests OAuth tokens at runtime. Store the service secret in an encrypted team vault with least-privilege access and audit logging; share only the minimum approved fields through the vault.
+Each developer should:
 
-Do not generate another service key, change IAM roles, or use a personal IAS login as a workaround. Rotate the service credential if exposure is suspected.
+- clone the repository into a separate local directory;
+- create a local `.venv` after cloning;
+- maintain an independent ignored `.env`;
+- retrieve approved secrets from the team's private vault;
+- request OAuth tokens independently; and
+- never copy a personal password, access token, service-key file, or database URL through Git or chat.
 
-## Branches and pull requests
+A virtual environment should be recreated after the repository moves to another path.
 
-Current recommended ownership branches are **feature/agent-orchestration** for
-Developer A and **feature/supply-chain-engine** for Developer B. Shared
-contract/dashboard/release changes use a short-lived reviewed branch. See
-[TEAM_TASKS.md](TEAM_TASKS.md) for the acceptance matrix.
+## Start a change
 
-Suggested branches are `feature/sap-agent`, `feature/inventory-optimization`, and `feature/dashboard`. Keep `main` protected and merge through pull requests after tests and review. Do not force-push or overwrite another developer’s work.
+```powershell
+git switch main
+git pull --ff-only origin main
+git switch -c feature/<short-description>
+```
 
-Developer A owns:
+- `git switch main` selects the protected integration branch.
+- `git pull --ff-only` updates it without creating an accidental merge commit.
+- `git switch -c` creates an isolated branch for the new work.
 
-- SAP AI Core and Generative AI Hub integration.
-- Agent orchestration and SAP adapter design.
-- Cloud Foundry/AWS deployment planning.
+Use `fix/`, `docs/`, or `chore/` instead of `feature/` when that better describes the change.
 
-Developer B owns:
+## Validate before commit
 
-- Inventory data contracts and mock ERP.
-- Scenario optimization.
-- Initial backend endpoints and dashboard inputs.
+```powershell
+.\scripts\run_tests.ps1
+.\scripts\security_check.ps1
+git status --short
+git diff --check
+git diff
+```
 
-## Proposed issue backlog
+Review the complete changed-file list and diff. Confirm that `.env`, local databases, logs, service keys, and generated credentials are absent.
 
-The list below is historical planning; current discrete tickets and dependencies
-are maintained in [TEAM_TASKS.md](TEAM_TASKS.md).
+## Commit and push
 
-These are proposed only; do not create them remotely without owner approval.
+```powershell
+git add <reviewed-files>
+git commit -m "Describe the completed change"
+git push -u origin feature/<short-description>
+```
 
-1. **Harden SAP AI Core client** — acceptance: OAuth, timeout, 401 refresh, and sanitized error tests pass against mocks.
-2. **Define inventory event schema** — acceptance: schema covers material, facility, quantity, demand, lead time, timestamp, and source.
-3. **Add disruption-to-stockout workflow** — acceptance: a deterministic fixture produces an explainable risk result.
-4. **Add scenario comparison endpoint** — acceptance: alternatives show cost, delay, assumptions, and a human approval state.
-5. **Create Cloud Foundry deployment manifest** — acceptance: deployment instructions are tested without committing credentials.
-6. **Add audit trail and approval gate** — acceptance: recommendations and human decisions are traceable.
+Prefer an explicit file list over `git add .` when unrelated local changes exist. The `-u` option connects the local branch to its remote branch so later `git push` and `git pull` commands need no branch name.
 
-## GitHub approval gate
+## Pull request expectations
 
-Before creating a remote repository or pushing:
+A pull request should contain:
 
-1. Confirm the active GitHub account with the project owner.
-2. Obtain explicit approval for a private repository named `nusantara-supply-agent`.
-3. Scan tracked files for credentials and confirm `.env` is ignored.
-4. Review the exact commit file list.
-5. Create the private remote and push only after approval.
+- the problem and intended outcome;
+- the main implementation decisions;
+- test and security evidence;
+- screenshots for material UI changes;
+- integration status changes, including what is still not live;
+- deployment or migration instructions when applicable; and
+- rollback or failure considerations for risky changes.
 
-Do not invite collaborators until the owner supplies exact GitHub usernames and approves the invitations.
+At least one teammate should review changes to schemas, approval policy, credentials, deployment manifests, persistence, external integrations, and security boundaries.
+
+## Merge policy
+
+- Keep `main` protected.
+- Merge only after required checks and review pass.
+- Do not force-push shared branches.
+- Do not rewrite another developer's commits without agreement.
+- Delete merged remote feature branches when they are no longer needed.
+- Pull the updated `main` before starting the next change.
+
+## Suggested ownership
+
+Use [TEAM_TASKS.md](TEAM_TASKS.md) for the current two-developer work split and [ROADMAP.md](ROADMAP.md) for priorities. Ownership does not remove the review requirement for cross-cutting changes.
+
+## Secret incident response
+
+If a credential may have been committed or exposed:
+
+1. stop using it;
+2. notify the credential owner privately;
+3. revoke or rotate it at the source;
+4. inspect access and audit logs;
+5. remove it from the repository history using an approved procedure; and
+6. document the incident without reproducing the secret.
+
+Deleting a secret from the latest file is not sufficient because it may remain in Git history.

@@ -1,76 +1,43 @@
 # Windows setup
 
-## 1. Prerequisites
+This page is the short setup checklist. The canonical command explanations, restart procedure, database operations, Cloud Foundry steps, and troubleshooting are in [OPERATIONS.md](OPERATIONS.md).
+
+## Prerequisites
 
 - Windows 10 or later.
-- Python 3.11 or later.
+- PowerShell 5.1 or PowerShell 7+.
+- Python 3.11, 3.12, or 3.13.
 - Git.
-- VS Code or Kiro (optional).
-- GitHub CLI is optional and is not required for local work.
 
-Confirm the tools from PowerShell:
+## Install
 
 ```powershell
-python --version
-git --version
-```
-
-## 2. Create and activate the environment
-
-From the parent workspace:
-
-```powershell
-cd .\nusantara-supply-agent
-python -m venv .venv
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-& .\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-```
-
-The virtual environment is local to this project and is ignored by Git.
-
-## 3. Configure local variables
-
-```powershell
+Set-Location C:\nusantara-supply-agent
+py -3.12 -m venv .venv
+Set-ExecutionPolicy -Scope Process Bypass
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements-dev.txt
 Copy-Item .env.example .env
 ```
 
-Enter SAP values only in the local `.env`, using the team’s approved secret-delivery method. Do not request or share an SAP IAS password. Do not place access tokens, service keys, or credential JSON in the repository.
+`Copy-Item` is a first-run command. Do not overwrite an existing `.env`, and never commit its contents.
 
-The non-secret Cloud Foundry target is:
+If this repository was moved after `.venv` was created, recreate the virtual environment. Python virtual environments are not reliably portable between paths.
 
-- Cloud Foundry org: `SEAIO_aws-sap-hackathon-si4ykj9d`
-- Cloud Foundry space: `hackathon-a-cruel-angel-s-thesis`
-- API: `https://api.cf.ap10.hana.ondemand.com`
-
-AI Core resource groups and deployment IDs are environment-specific. Obtain them
-through the team's approved private channel and store them only in local or
-platform-managed environment variables.
-
-## 4. Run local verification
+## Verify and run
 
 ```powershell
-python scripts/check_environment.py
+.\scripts\demo_doctor.ps1
 .\scripts\run_tests.ps1
-python scripts/test_sap_connection.py
+.\scripts\security_check.ps1
+.\scripts\start_demo.ps1
 ```
 
-The connection script is mock-only unless `--live` is explicitly passed. Live checks require owner approval and valid local credentials.
-
-## 5. Run the services
-
-For a one-command local start, run **.\scripts\start_demo.ps1**. It starts the
-FastAPI service and its first-party web application, then opens the browser at
-`http://127.0.0.1:8000`. Stop the saved process with
-**.\scripts\stop_demo.ps1**.
-
-With the backend running, verify the full workflow with
-**python scripts/demo_smoke.py**. The smoke script resets fixtures, verifies
-analysis, creates and approves a simulated draft, checks audit events, and
-resets state again.
+Open <http://127.0.0.1:8000/overview>. Stop the application with:
 
 ```powershell
-python -m uvicorn backend.main:app --reload
+.\scripts\stop_demo.ps1
 ```
 
-The API exposes only readiness flags at `/api/v1/status`; it does not return secrets, tokens, or private credential URLs.
+SAP and PostgreSQL values are optional for the deterministic local workflow. Store them only in the ignored `.env` file when those integrations are being tested.

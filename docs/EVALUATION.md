@@ -1,101 +1,138 @@
-# NSRA evaluation evidence
+# Evaluation and verification evidence
 
-Evaluation date: 2026-10-10. Dataset: data/demo_seed.json. All test data is
-synthetic and all transaction actions are local simulations.
+**Verification date:** 2026-10-13
 
-## Observed automated results
+**Application version:** `0.5.0`
 
-Command:
+**Branch evaluated:** `codex/control-tower-ui-v2`
 
-~~~powershell
-$env:PYTHONDONTWRITEBYTECODE='1'
-.\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider
-~~~
+This document records reproducible evidence for the current repository. It does not treat configuration, login success, or an implementation stub as proof of a live integration.
 
-Observed result: **44 passed**. No failed or skipped tests were reported.
+## Latest quality-gate result
 
-Coverage includes:
+| Check | Result | Evidence |
+|---|---|---|
+| Automated test suite | **Pass** | 86 tests executed successfully on Python 3.12.9 |
+| Secret scan | **Pass** | 108 tracked/untracked non-ignored repository files scanned |
+| Dependency consistency | **Pass** | `pip check`: no broken requirements |
+| Dependency vulnerability audit | **Pass** | `pip-audit -r requirements.txt`: no known vulnerabilities |
+| Public application health | **Pass** | `/health` returned `status: ok` and `service: nsra-api` |
+| Public status disclosure | **Pass with gap identified** | Safe status response; deployment still reports ephemeral SQLite |
+| Public A2A discovery | **Pass** | `/.well-known/agent.json` returned the read-only NSRA agent card |
+| Cloud Foundry management check | **Authentication required** | Existing CLI token had expired; interactive login is required before management commands |
 
-- exact usable inventory, safety breach, stockout boundary, split arrivals,
-  already-stockout, wrong units, and legacy projection;
-- scenario feasibility, source conservation, unavailable supplier, normal
-  operation, cost/downtime ranking, and no-feasible damage limitation;
-- API validation/error envelope, missing IDs, incident idempotency, prompt-text
-  sanitization, reset reliability, draft state transition, and audit;
-- tool allowlist/permission, grounded live-shaped response, timeout/malformed/
-  hallucinated-response fallback;
-- EventBridge-compatible normalization, local Lambda idempotency, simulated SAP
-  payload, and dashboard HTTP client behavior;
-- a mocked end-to-end incident → analysis → recommendation → draft → approval →
-  audit workflow.
+The repository-local `.venv` had been moved from an older workspace and referenced a stale base environment. To avoid modifying user state, this verification used a clean temporary Python 3.12.9 environment with `requirements-dev.txt`. Recreate the project `.venv` before relying on repository helper scripts on this workstation.
 
-## Observed HTTP smoke result
+## Automated test inventory
 
-With Uvicorn running locally:
+| Test module | Tests | Primary scope |
+|---|---:|---|
+| `test_a2a.py` | 4 | Agent card, JSON-RPC validation, deterministic response, read-only behavior |
+| `test_agent.py` | 7 | Bounded orchestration, AI validation, and deterministic fallback |
+| `test_api_phase1.py` | 5 | Legacy compatibility endpoints |
+| `test_api_workflow.py` | 10 | Incident, analysis, draft, approval, audit, and error workflow |
+| `test_dashboard_client.py` | 2 | Dashboard API client behavior |
+| `test_deployment.py` | 7 | Manifest, process command, production defaults, and deployment safety |
+| `test_frontend.py` | 13 | Navigation, UI modules, responsive behavior, charts, exports, and assets |
+| `test_integrations.py` | 4 | AWS adapter and SAP payload boundary |
+| `test_inventory.py` | 9 | Inventory risk and time-phased projections |
+| `test_postgres_config.py` | 8 | Backend selection, production fail-closed policy, and DSN resolution |
+| `test_postgres_tools.py` | 3 | PostgreSQL scripts and secret-safe behavior |
+| `test_repository_persistence.py` | 3 | State persistence and restoration |
+| `test_sap_config.py` | 3 | SAP configuration validation and readiness reporting |
+| `test_scenario_engine.py` | 8 | Feasibility, allocation, ranking, and reference recommendation |
+| **Total** | **86** | |
 
-~~~powershell
-python scripts/demo_smoke.py
-~~~
+## Core acceptance invariants
 
-Observed output:
+The test suite verifies the reference incident against fixed synthetic assumptions:
 
-~~~text
-SMOKE PASS | coverage=36h | baseline_downtime=60h |
-recommendation=SCN-TRANSFER-MKS+LOCAL-MKS | draft=APPROVED
-Demo state reset after smoke run.
-~~~
+- usable inventory equals 1,800 kg;
+- demand equals 50 kg/hour;
+- initial cover equals 36 hours;
+- baseline delay produces 60 hours of modeled downtime;
+- baseline modeled exposure equals IDR 750 million;
+- the recommended scenario is `SCN-TRANSFER-MKS+LOCAL-MKS`;
+- the recommendation uses 1,800 kg transfer plus 1,200 kg local supply;
+- recommended modeled downtime equals zero;
+- recommended response cost equals IDR 45 million;
+- baseline/wait scenarios cannot create a response draft;
+- duplicate incident and draft requests remain idempotent;
+- a requester cannot approve their own draft;
+- stale or repeated decisions are rejected; and
+- SAP AI failure cannot replace the deterministic recommendation.
 
-Backend health returned status ok. Streamlit health returned ok. The PowerShell
-parser reported no syntax error in start_demo.ps1 and stop_demo.ps1.
+These invariants validate implementation consistency, not the accuracy of real-world costs, demand, or lead times.
 
-## Observed dashboard result
+## Frontend verification
 
-The dashboard was rendered in a narrow in-app browser viewport and the complete
-flow was exercised:
+The current UI has been reviewed at desktop and responsive layouts for:
 
-1. mode and synthetic-data notice rendered;
-2. analysis displayed Makassar Factory, Chemical Compound A, 1,800 kg usable,
-   36.0h coverage, and baseline stockout timeline;
-3. scenario table ranked the mixed transfer + local supplier first;
-4. summary displayed 60.0h baseline vs 0.0h recommended modeled downtime and
-   Rp45,000,000 action cost;
-5. a COMBINED draft reached PENDING_APPROVAL;
-6. approval changed it to APPROVED and displayed “no SAP transaction was
-   executed”;
-7. audit records rendered.
+- persistent global navigation and deep links;
+- executive overview and global filters;
+- interactive Indonesia network map;
+- incident workspace subnavigation;
+- 24-hour, 72-hour, and full inventory horizons;
+- chart tooltips and CSV export;
+- scenario-frontier selection and detail panel;
+- sortable, filterable, paginated tables;
+- approval and audit workflows; and
+- browser-console errors.
 
-Visual QA also found and fixed a narrow-viewport secondary-button contrast bug.
-Heading hierarchy is h1 then h2, controls have visible labels/focus styles,
-buttons have a 44px minimum height, and reduced-motion CSS is present.
+No errors or warnings were observed in the reviewed browser flow. This is manual evidence; a Playwright-style browser suite and visual regression pipeline are still required.
 
-## Main fixture arithmetic
+## External integration evidence
 
-- Starting usable stock: 2,000 − 200 − 0 = **1,800 kg**.
-- Demand: **50 kg/hour**, therefore coverage = 1,800 / 50 = **36 hours**.
-- Delayed inbound: hour 96. Baseline shortage is hours 36–95 =
-  **60 downtime-equivalent hours**, unmet demand **3,000 kg**.
-- Surabaya transfer: 1,800 kg at hour 48. It cannot prevent the first stockout
-  and alone leaves **24 hours** downtime.
-- Local supplier: 1,200 kg at hour 12; alone it is insufficient.
-- Mixed option: 1,200 kg at hour 12 + 1,800 kg at hour 48 bridges demand to hour
-  96. Modeled action cost = Rp26,000,000 + Rp19,000,000 = **Rp45,000,000**.
-- Air freight: feasible at hour 12, modeled action cost **Rp220,000,000**.
-- Objective selects feasible minimum downtime, then minimum total modeled cost;
-  therefore the mixed option ranks above air freight for this fixture.
+### Cloud Foundry
 
-These figures are reproducible assumptions, not production forecasts or claimed
-savings.
+Public read-only checks on 2026-10-13 confirmed that the deployed route is reachable. The current runtime reports production mode but still uses SQLite with `ephemeral-instance` scope. Therefore cloud availability is verified, while durable cloud persistence is not.
 
-## Honest limitations
+### SAP AI Core
 
-- SAP AI Core live inference was not called during this evaluation. The client
-  is implemented and fallback behavior is tested, but live mode remains
-  unverified here.
-- AWS EventBridge/Lambda is locally emulated; no AWS resource was provisioned.
-- SAP Joule is not deployed.
-- The repository is in-memory and single-process; restart/reset clears mutable
-  analysis, draft, and audit state.
-- There is no production authentication/authorization, database, concurrency
-  control across processes, real ERP data, or real transaction execution.
-- Logistics/cost/reliability parameters are synthetic and require calibration
-  from approved historical data before any operational use.
+A controlled live inference was completed previously from the BTP runtime, and the deployed status records `SAP AI LIVE VERIFIED`. Public request-time inference remains disabled by policy. The deterministic fallback is covered by automated tests.
+
+### SAP Joule
+
+The tenant capability previously returned an NSRA incident briefing through the A2A boundary. The public agent card is currently reachable. A fresh tenant conversation should be included in every release rehearsal because Joule capability state and destination configuration are external to this repository.
+
+### PostgreSQL
+
+PostgreSQL code, configuration discovery, TLS verification, migration behavior, and production fail-closed rules are covered by tests. No managed database was contacted during this evaluation, and the deployed app does not yet use PostgreSQL.
+
+### AWS
+
+EventBridge/Lambda behavior is locally emulated and tested. No AWS account, event bus, Lambda function, IAM role, or dead-letter queue was called during this evaluation.
+
+### SAP ERP
+
+The adapter creates a `simulationOnly: true` payload and performs no network request. No purchase order, stock transfer, or other ERP document has been created.
+
+## Reproduce the local evidence
+
+After creating a healthy `.venv`:
+
+```powershell
+.\scripts\run_tests.ps1
+.\scripts\security_check.ps1
+.\scripts\start_demo.ps1 -NoBrowser
+python scripts\demo_smoke.py
+.\scripts\stop_demo.ps1
+```
+
+Expected smoke output includes:
+
+```text
+SMOKE PASS | coverage=36h | baseline_downtime=60h | recommendation=SCN-TRANSFER-MKS+LOCAL-MKS | draft=APPROVED
+```
+
+## Remaining evaluation work
+
+- Browser automation and screenshot regression.
+- Accessibility testing with keyboard and assistive technology.
+- API and database load/concurrency testing.
+- PostgreSQL restage, backup, and restore exercise.
+- Authenticated penetration and authorization testing.
+- Live AWS event and failure-path test.
+- SAP read-only business-data reconciliation.
+- Model calibration and historical backtesting.
+- Observability, alert, and disaster-recovery exercise.
