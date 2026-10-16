@@ -1,28 +1,32 @@
-NSRA SAP AI CORE -> OPENCODE V2 BRIDGE (EXPERIMENTAL)
+NSRA SAP AI CORE -> OPENCODE BRIDGE (LOCAL DEVELOPER TOOL)
 
-1. Extract the CONTENTS of nsra_sap_bridge into C:\nusantara-supply-agent (bridge/, opencode.json, files).
-2. Make sure existing .env has SAP_CLIENT_ID, SAP_CLIENT_SECRET, SAP_AUTH_URL, SAP_AI_API_URL.
-3. In PowerShell from project root:
-   python -m pip install -r requirements-bridge.txt
-   python bridge/test_sap.py
-   # Continue only if HTTP 200 and meaningful response.
-4. Create private loopback bridge secret:
-   .\setup_proxy_key.ps1
-   (or run powershell -ExecutionPolicy Bypass -File .\setup_proxy_key.ps1 if script policies block it.)
-5. Terminal 1:
-   python -m uvicorn bridge.proxy:app --host 127.0.0.1 --port 8765
-6. Terminal 2 (new PowerShell in project root):
-   .\start_opencode.ps1
-   opencode models
-   opencode run --model sap-local/sap-gpt54 "Reply with Hello"
+Canonical documentation:
+  docs\OPERATIONS.md - commands and troubleshooting
+  docs\SYSTEM_INTEGRATION_GUIDE.md - architecture and security boundary
+
+Prerequisites:
+  - A healthy project .venv
+  - An ignored .env containing approved SAP AI Core configuration
+  - OpenCode installed locally
+
+One-time setup from C:\nusantara-supply-agent:
+  .\setup_proxy_key.ps1
+  Copy-Item .\opencode.example.json .\opencode.json -Force
+
+Optional controlled SAP verification (this consumes team quota):
+  .\.venv\Scripts\python.exe bridge\test_sap.py
+
+Terminal 1 - start the loopback bridge:
+  .\.venv\Scripts\python.exe -m uvicorn bridge.proxy:app --host 127.0.0.1 --port 8765 --env-file .env
+
+Terminal 2 - load local OpenCode configuration:
+  .\start_opencode.ps1
+  opencode models sap-local
+  opencode run --model sap-local/sap-gpt54 "Reply with exactly: SAP_CONNECTION_OK"
 
 Safety:
-- The bridge binds only 127.0.0.1, not 0.0.0.0. Do not deploy publicly.
-- Make sure .env, *.db, and local logs are excluded from git.
-- This is an experimental chat-completions proxy. Streaming is byte forwarded;
-  tool-calling and responses compatibility are not guaranteed for this deployment.
-- The context/output limits in opencode.json are CONSERVATIVE PLACEHOLDERS,
-  not confirmed deployment limits. Adjust only after verifying actual limits.
-- The env provider key is consumed by OpenCode as bearer; the service key is
-  held only by the local bridge. Don't share them with other users.
-- The initial test calls the SAP endpoint and can consume shared team quota.
+  - Never bind this bridge to 0.0.0.0 or deploy it publicly.
+  - Never commit .env or opencode.json.
+  - Each workstation generates an independent NSRA_PROXY_KEY.
+  - The bridge fixes the SAP deployment server-side and hides upstream bodies.
+  - Opening http://127.0.0.1:8765/ returns 404 by design; use /health.

@@ -5,7 +5,10 @@ This runbook explains how to set up, start, stop, restart, validate, and trouble
 ## Command conventions
 
 - Commands beginning with `./scripts` or `.\scripts` are repository-owned helpers.
-- `python` refers to the active `.venv` interpreter.
+- Repository helpers select `.venv\Scripts\python.exe` directly; activating the
+  environment is optional for normal start, stop, test, and security commands.
+- Manual Python commands use `.\.venv\Scripts\python.exe -m ...` explicitly so
+  PowerShell cannot accidentally select `pip` or Python from another installation.
 - A command that includes `--live`, `cf`, a database URL, or SAP credentials may reach an external service.
 - Never paste `.env`, service-key output, passwords, tokens, or a PostgreSQL DSN into source control, issues, or chat.
 
@@ -14,9 +17,8 @@ This runbook explains how to set up, start, stop, restart, validate, and trouble
 ```powershell
 Set-Location C:\nusantara-supply-agent
 py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 Copy-Item .env.example .env
 ```
 
@@ -24,12 +26,12 @@ Copy-Item .env.example .env
 |---|---|
 | `Set-Location C:\nusantara-supply-agent` | Makes the repository the current working directory. Relative paths in later commands depend on this. |
 | `py -3.12 -m venv .venv` | Creates an isolated Python environment in `.venv`. It prevents project packages from changing the system Python installation. |
-| `.\.venv\Scripts\Activate.ps1` | Places the virtual environment first on the current terminal's `PATH`. |
-| `python -m pip install --upgrade pip` | Updates the package installer inside `.venv`. |
-| `python -m pip install -r requirements-dev.txt` | Installs runtime dependencies and development security tooling. `requirements-dev.txt` includes `requirements.txt`. |
+| `.\.venv\Scripts\python.exe -m pip install --upgrade pip` | Updates the package installer through the exact interpreter owned by this repository. |
+| `.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt` | Installs runtime dependencies and development security tooling into the same interpreter. `requirements-dev.txt` includes `requirements.txt`. |
 | `Copy-Item .env.example .env` | Creates the ignored local runtime configuration file. Run once; do not overwrite an existing configured `.env`. |
 
-If script activation is blocked, change policy only for the current PowerShell process:
+Activation is optional. If a developer prefers activated-shell commands and
+PowerShell blocks activation, change policy only for the current process:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
@@ -44,7 +46,6 @@ Use this sequence when the application is currently stopped:
 
 ```powershell
 Set-Location C:\nusantara-supply-agent
-.\.venv\Scripts\Activate.ps1
 .\scripts\demo_doctor.ps1
 .\scripts\start_demo.ps1
 ```
@@ -100,7 +101,7 @@ Restart after changing Python, JavaScript, CSS, `.env`, or the active persistenc
 ### Run directly for development
 
 ```powershell
-python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+.\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 This foreground command automatically reloads source changes and prints logs in the current terminal. Stop it with `Ctrl+C`. Do not run it at the same time as `start_demo.ps1` on the same port.
@@ -129,7 +130,7 @@ Get-Content .nsra-local\backend.stdout.log -Tail 100
 Start NSRA first, then run:
 
 ```powershell
-python scripts\demo_smoke.py
+.\.venv\Scripts\python.exe scripts\demo_smoke.py
 ```
 
 The smoke test resets the synthetic workspace, verifies health, runs the primary incident analysis, checks the reference recommendation, creates and approves a simulated draft, validates audit events, and resets state again.
@@ -137,13 +138,13 @@ The smoke test resets the synthetic workspace, verifies health, runs the primary
 Keep the generated state for browser inspection with:
 
 ```powershell
-python scripts\demo_smoke.py --keep-state
+.\.venv\Scripts\python.exe scripts\demo_smoke.py --keep-state
 ```
 
 Use a different base URL with:
 
 ```powershell
-python scripts\demo_smoke.py --base-url http://127.0.0.1:8010
+.\.venv\Scripts\python.exe scripts\demo_smoke.py --base-url http://127.0.0.1:8010
 ```
 
 ### Reset demo state manually
@@ -159,7 +160,7 @@ This reloads `data/demo_seed.json` and clears mutable analyses, drafts, and audi
 ### Emulate an AWS event
 
 ```powershell
-python scripts\simulate_event.py
+.\.venv\Scripts\python.exe scripts\simulate_event.py
 ```
 
 The script constructs an EventBridge-compatible vessel-delay event, converts it to the canonical incident schema, and posts it to the local API. It does not call AWS.
@@ -177,7 +178,7 @@ This uses the repository `.venv`, disables bytecode output, and runs the complet
 To collect tests without executing them:
 
 ```powershell
-python -m pytest --collect-only -q -p no:cacheprovider
+.\.venv\Scripts\python.exe -m pytest --collect-only -q -p no:cacheprovider
 ```
 
 ### Security gate
@@ -203,7 +204,7 @@ Use the full security helper before every push. A vulnerability database lookup 
 ### Safe environment diagnostics
 
 ```powershell
-python scripts\check_environment.py
+.\.venv\Scripts\python.exe scripts\check_environment.py
 ```
 
 This prints the OS, Python version, virtual-environment status, `.env` presence, and required-package availability. It does not print environment variable values.
@@ -224,7 +225,7 @@ Do not include the real URI in screenshots or command history.
 ### Verify connectivity and TLS
 
 ```powershell
-python scripts\test_postgres_connection.py
+.\.venv\Scripts\python.exe scripts\test_postgres_connection.py
 ```
 
 The script opens a short connection, reads the server version, confirms TLS when required, and never prints the DSN.
@@ -234,7 +235,7 @@ The script opens a short connection, reads the server version, confirms TLS when
 Stop NSRA before migration, then run:
 
 ```powershell
-python scripts\migrate_sqlite_to_postgres.py
+.\.venv\Scripts\python.exe scripts\migrate_sqlite_to_postgres.py
 ```
 
 The default source is `.nsra-local/nsra-state.sqlite3`. The script validates source tables and JSON, acquires a PostgreSQL advisory transaction lock, creates destination tables, copies state, and verifies row count. It refuses to replace an initialized destination.
@@ -242,7 +243,7 @@ The default source is `.nsra-local/nsra-state.sqlite3`. The script validates sou
 `--force` deliberately replaces the destination snapshot:
 
 ```powershell
-python scripts\migrate_sqlite_to_postgres.py --force
+.\.venv\Scripts\python.exe scripts\migrate_sqlite_to_postgres.py --force
 ```
 
 Use `--force` only after confirming that the destination data can be replaced and a recovery point exists.
@@ -266,7 +267,7 @@ Then restart NSRA and verify `/api/v1/status` reports PostgreSQL.
 ### Offline-safe configuration check
 
 ```powershell
-python scripts\test_sap_connection.py
+.\.venv\Scripts\python.exe scripts\test_sap_connection.py
 ```
 
 Without `--live`, this command performs no network request and reports a mock success. It is useful for confirming that the script and dependencies run, not for proving SAP connectivity.
@@ -274,10 +275,86 @@ Without `--live`, this command performs no network request and reports a mock su
 ### Controlled live inference
 
 ```powershell
-python scripts\test_sap_connection.py --live
+.\.venv\Scripts\python.exe scripts\test_sap_connection.py --live
 ```
 
 This loads credentials from the ignored `.env`, obtains an OAuth token, and makes one inference request. Use it only with authorization, expected quota, and a private terminal. A successful command is evidence for that moment and configuration; it does not enable public live inference automatically.
+
+## Local OpenCode-to-SAP bridge
+
+The bridge is an optional developer tool. It lets OpenCode use the team's SAP AI
+Core deployment through an OpenAI-compatible loopback endpoint. It is not
+required to run the NSRA web application, is not part of the Cloud Foundry
+request path, and must never listen on a public interface.
+
+### One-time workstation preparation
+
+Confirm that `.env` already contains valid SAP AI Core configuration, then
+generate a workstation-local proxy key:
+
+```powershell
+Set-Location C:\nusantara-supply-agent
+.\setup_proxy_key.ps1
+Copy-Item .\opencode.example.json .\opencode.json -Force
+```
+
+`setup_proxy_key.ps1` writes `NSRA_PROXY_KEY` to the ignored `.env` without
+printing it. `opencode.json` is also ignored because it is local tool
+configuration. Each developer generates a separate key and never shares or
+commits it.
+
+### Terminal 1: start the bridge
+
+```powershell
+Set-Location C:\nusantara-supply-agent
+.\.venv\Scripts\python.exe -m uvicorn bridge.proxy:app `
+  --host 127.0.0.1 `
+  --port 8765 `
+  --env-file .env `
+  --log-level info
+```
+
+Keep this terminal open. Verify the actual health route from another terminal:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8765/health
+```
+
+The expected result contains `status: ok`. A browser request to `/` returns
+`404 Not Found` by design; the bridge exposes `/health`, `/v1/models`, and
+`/v1/chat/completions`, not a web page.
+
+### Terminal 2: load local authentication and run OpenCode
+
+```powershell
+Set-Location C:\nusantara-supply-agent
+.\start_opencode.ps1
+opencode models sap-local
+opencode run --model sap-local/sap-gpt54 "Reply with exactly: SAP_CONNECTION_OK"
+```
+
+`start_opencode.ps1` loads only `NSRA_PROXY_KEY` into the current PowerShell
+process, sets `OPENCODE_CONFIG` to the project file, and verifies that OpenCode
+can discover `sap-local/sap-gpt54`. The model identifier follows
+`provider-id/model-id`; it does not need to equal the SAP deployment ID because
+the bridge fixes the approved deployment server-side.
+
+### Bridge request path and security boundary
+
+```text
+OpenCode
+  -> Bearer NSRA_PROXY_KEY
+  -> http://127.0.0.1:8765/v1/chat/completions
+  -> bridge/proxy.py
+  -> SAP OAuth client-credentials token
+  -> SAP AI Core deployment
+  -> streamed or JSON response back to OpenCode
+```
+
+The bridge removes the client-supplied model name and always calls the
+configured `SAP_GPT_DEPLOYMENT_ID`. It hides SAP error bodies and credentials
+from the client. Loopback binding and the proxy key protect the local boundary;
+they do not turn the bridge into a production gateway.
 
 ## Cloud Foundry deployment
 
@@ -312,8 +389,8 @@ Do not combine `--sso` and `--origin`; Cloud Foundry CLI treats them as mutually
 
 ```powershell
 & $cf push --no-start
-python scripts\configure_cf_runtime.py --cf $cf
-python scripts\configure_postgres_runtime.py --cf $cf
+.\.venv\Scripts\python.exe scripts\configure_cf_runtime.py --cf $cf
+.\.venv\Scripts\python.exe scripts\configure_postgres_runtime.py --cf $cf
 & $cf restage nsra-a-cruel-angels-thesis
 ```
 
@@ -341,7 +418,7 @@ The status gate is `engine: postgresql`, `persistent: true`, and `scope: durable
 Create or update the BTP destination after the NSRA route is healthy:
 
 ```powershell
-python scripts\configure_destination.py --cf $cf
+.\.venv\Scripts\python.exe scripts\configure_destination.py --cf $cf
 ```
 
 The helper retrieves the configured Destination service key through Cloud Foundry, uses it in memory to create or update `NSRA_SUPPLY_AGENT_A2A`, and does not print credential values.
@@ -382,16 +459,85 @@ Move the stale environment aside and recreate it:
 ```powershell
 Rename-Item .venv .venv-stale
 py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 ```
 
 Renaming is recoverable and avoids deleting unknown files.
 
+### Python reports packages as unsupported on this platform
+
+If startup fails with an import such as
+`No module named 'pydantic_core._pydantic_core'`, inspect the interpreter and
+installed wheels:
+
+```powershell
+.\.venv\Scripts\python.exe -c "import sys; print(sys.version); print(sys.executable)"
+.\.venv\Scripts\python.exe -m pip check
+Get-ChildItem .\.venv\Lib\site-packages -Recurse -Filter '*.pyd' |
+  Select-Object -ExpandProperty Name -Unique
+```
+
+For example, a Python 3.12 interpreter cannot load files tagged `cp313` because
+those extensions were compiled for Python 3.13. This normally means a different
+Python installation's `pip` wrote into the environment or the environment was
+copied between machines or Python versions.
+
+Preserve the broken environment, recreate it with one interpreter, and install
+through that exact interpreter:
+
+```powershell
+.\scripts\stop_demo.ps1
+$backupName = ".venv-broken-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+Rename-Item -LiteralPath .venv -NewName $backupName
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pip check
+.\scripts\demo_doctor.ps1
+```
+
+If the Python launcher is unavailable, call the approved base interpreter by
+its full path when creating `.venv`. Do not edit `pyvenv.cfg` or rename compiled
+extension files; neither action changes their ABI.
+
+### The bridge starts but the browser shows 404
+
+This is expected for `http://127.0.0.1:8765/`. Verify the health route instead:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8765/health
+```
+
+The bridge intentionally has no root web page or favicon route.
+
+### OpenCode reports `Model unavailable: sap-local/sap-gpt54`
+
+This error occurs before a request reaches SAP. Confirm the local config and
+load it into the same terminal that runs OpenCode:
+
+```powershell
+Test-Path .\opencode.json
+Get-Content .\opencode.json -Raw | ConvertFrom-Json | Out-Null
+.\start_opencode.ps1
+opencode models sap-local
+```
+
+The model list must contain `sap-local/sap-gpt54`. If it does not, recreate the
+ignored local config from the tracked current-format template:
+
+```powershell
+Copy-Item .\opencode.example.json .\opencode.json -Force
+.\start_opencode.ps1
+```
+
+If OpenCode reaches the bridge, the Uvicorn terminal logs a request to
+`POST /v1/chat/completions`. No POST means model/provider discovery is still the
+problem. `POST /v1/responses 404` means the config is using the wrong SDK; the
+tracked template deliberately uses `@ai-sdk/openai-compatible`.
+
 ### Dependency audit cannot build its temporary environment
 
 ```powershell
-python -m pip install --upgrade pip wheel setuptools pip-audit
+.\.venv\Scripts\python.exe -m pip install --upgrade pip wheel setuptools pip-audit
 .\scripts\security_check.ps1
 ```
 

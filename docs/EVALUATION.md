@@ -1,6 +1,6 @@
 # Evaluation and verification evidence
 
-**Verification date:** 2026-10-13
+**Verification date:** 2026-10-15
 
 **Application version:** `0.5.0`
 
@@ -13,15 +13,21 @@ This document records reproducible evidence for the current repository. It does 
 | Check | Result | Evidence |
 |---|---|---|
 | Automated test suite | **Pass** | 86 tests executed successfully on Python 3.12.9 |
-| Secret scan | **Pass** | 108 tracked/untracked non-ignored repository files scanned |
+| Secret scan | **Pass** | 111 tracked/untracked non-ignored repository files scanned |
 | Dependency consistency | **Pass** | `pip check`: no broken requirements |
 | Dependency vulnerability audit | **Pass** | `pip-audit -r requirements.txt`: no known vulnerabilities |
+| End-to-end smoke workflow | **Pass** | Health, analysis, reference recommendation, simulated approval, audit, and reset completed |
+| Documentation links | **Pass** | Internal Markdown targets resolved across 20 documentation files |
 | Public application health | **Pass** | `/health` returned `status: ok` and `service: nsra-api` |
 | Public status disclosure | **Pass with gap identified** | Safe status response; deployment still reports ephemeral SQLite |
 | Public A2A discovery | **Pass** | `/.well-known/agent.json` returned the read-only NSRA agent card |
 | Cloud Foundry management check | **Authentication required** | Existing CLI token had expired; interactive login is required before management commands |
 
-The repository-local `.venv` had been moved from an older workspace and referenced a stale base environment. To avoid modifying user state, this verification used a clean temporary Python 3.12.9 environment with `requirements-dev.txt`. Recreate the project `.venv` before relying on repository helper scripts on this workstation.
+The repository-local `.venv` contained Python 3.13 binary wheels while its
+interpreter was Python 3.12.9. The incompatible environment was preserved as a
+timestamped backup and replaced with a clean Python 3.12.9 environment from
+`requirements-dev.txt`. Repository helpers, all 86 tests, the smoke workflow,
+and the security gate now run successfully through the project interpreter.
 
 ## Automated test inventory
 

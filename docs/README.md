@@ -6,15 +6,21 @@ This directory separates operational guidance, implementation evidence, architec
 
 1. [Root README](../README.md) — product purpose, quick start, safety boundary, and documentation map.
 2. [Implementation Progress](IMPLEMENTATION_PROGRESS.md) — what is complete, what is deployed, and what remains unverified.
-3. [Integration Status](INTEGRATION_STATUS.md) — how FastAPI, PostgreSQL, SAP AI Core, SAP Joule, AWS, and SAP ERP fit together.
-4. [Operations Guide](OPERATIONS.md) — exact PowerShell commands, their functions, validation, restart, and troubleshooting.
-5. [Roadmap](ROADMAP.md) — prioritized path from the current prototype to a production-grade implementation.
+3. [Architecture](architecture.md) — internal components, trust boundaries, deterministic engine, and persistence model.
+4. [System Integration Guide](SYSTEM_INTEGRATION_GUIDE.md) — detailed service responsibilities and end-to-end SAP, AWS, Joule, database, and OpenCode flows.
+5. [Integration Status](INTEGRATION_STATUS.md) — current evidence, operating policy, and verified versus pending boundaries.
+6. [API Contract](API_CONTRACT.md) — endpoints, schemas, workflow state, and error behavior.
+7. [Operations Guide](OPERATIONS.md) — exact PowerShell commands, their functions, validation, restart, bridge operation, and troubleshooting.
+8. [Cloud Deployment](CLOUD_DEPLOYMENT.md) — secure BTP Cloud Foundry deployment and runtime gates.
+9. [Evaluation](EVALUATION.md) — reproducible quality evidence and known verification limitations.
+10. [Roadmap](ROADMAP.md) — prioritized path from the current prototype to a production-grade implementation.
 
 ## Reference documents
 
 | Document | Source-of-truth scope |
 |---|---|
 | [Architecture](architecture.md) | Domain boundaries, data flow, persistence model, optimizer, and trust boundaries |
+| [System Integration Guide](SYSTEM_INTEGRATION_GUIDE.md) | Component catalog, deployment topology, SAP/AWS service functions, OpenCode bridge, and failure isolation |
 | [API Contract](API_CONTRACT.md) | HTTP endpoints, payloads, state transitions, and error behavior |
 | [Cloud Deployment](CLOUD_DEPLOYMENT.md) | Secure Cloud Foundry deployment and runtime configuration |
 | [Evaluation](EVALUATION.md) | Reproducible quality evidence, test coverage, and verification limitations |

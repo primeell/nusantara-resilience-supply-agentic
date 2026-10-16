@@ -55,6 +55,7 @@ sequenceDiagram
 | PostgreSQL repository | **Implemented** | Repository, TLS check, configuration, migration, and tests | Managed endpoint, cloud configuration, restage-survival proof |
 | SAP AI Core | **Live verified, restricted** | A controlled GPT-5.4 inference succeeded previously; status records verification | Public live calls remain disabled; quota, latency, and failure monitoring are not operationalized |
 | SAP Joule | **Live verified, read-only** | Tenant capability previously returned an NSRA briefing; public A2A card is reachable | Destination authentication hardening, lifecycle automation, and regression verification after redeploy |
+| OpenCode bridge | **Local developer tool** | Authenticated loopback proxy, fixed SAP deployment, model discovery, and safe error boundary | Per-workstation config and credentials; it is not a production gateway or NSRA runtime dependency |
 | AWS events | **Locally emulated** | EventBridge payload normalization, idempotent ingestion, and Lambda-shaped handler | AWS account resources, IAM, EventBridge rule, Lambda deployment, DLQ, and live evidence |
 | SAP ERP adapter | **Payload mapping only** | Approved draft can be mapped to a clearly simulated SAP-shaped payload | S/4HANA sandbox, authenticated API, idempotency, reconciliation, rollback, and business authorization |
 
@@ -144,6 +145,27 @@ The A2A handler is deliberately constrained:
 - every response states that data is synthetic and human approval is required.
 
 The capability source is under `joule/nsra_supply_resilience`. The BTP destination helper creates `NSRA_SUPPLY_AGENT_A2A` and points it to the deployed `/a2a` route. The current destination uses `NoAuthentication`; this is acceptable only for the read-only synthetic hackathon boundary and must be replaced with an authenticated design before production use.
+
+## OpenCode developer bridge
+
+The optional `bridge/` process exposes an authenticated OpenAI-compatible
+loopback interface for controlled developer use with OpenCode. It is independent
+of the NSRA web runtime and is not deployed to Cloud Foundry.
+
+- `GET /health` verifies that the local bridge process started.
+- `GET /v1/models` requires the workstation-local bearer key and advertises
+  `sap-gpt54`.
+- `POST /v1/chat/completions` requires the same key, removes the client model
+  selection, and relays the request to the configured SAP deployment.
+- SAP credentials and verbose upstream error bodies are never returned to the
+  OpenCode client.
+- The server must bind only to `127.0.0.1`; this design is not a multi-user or
+  production API gateway.
+
+The tracked `opencode.example.json` contains the current provider shape without
+credentials. Each workstation copies it to ignored `opencode.json`, generates
+its own `NSRA_PROXY_KEY`, and follows the bridge procedure in
+[OPERATIONS.md](OPERATIONS.md).
 
 ## AWS event integration
 

@@ -13,6 +13,7 @@ private-key*.json
 
 # Python
 .venv/
+.venv-*/
 __pycache__/
 *.py[cod]
 *.pyo
@@ -37,6 +38,7 @@ _agent_tool_test/
 
 # Local AI/developer tooling (may contain local proxy credentials)
 opencode.json*
+!opencode.example.json
 NSRA_MASTER_BUILD_PROMPT.md
 .codex/
 .agents/

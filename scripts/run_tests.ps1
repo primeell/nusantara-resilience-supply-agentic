@@ -8,10 +8,16 @@ if (-not (Test-Path -LiteralPath $PythonPath)) {
 }
 
 $env:PYTHONDONTWRITEBYTECODE = "1"
+$TestExitCode = 0
 Push-Location $ProjectRoot
 try {
     & $PythonPath -B -m pytest -q -p no:cacheprovider
+    $TestExitCode = $LASTEXITCODE
 }
 finally {
     Pop-Location
+}
+
+if ($TestExitCode -ne 0) {
+    exit $TestExitCode
 }

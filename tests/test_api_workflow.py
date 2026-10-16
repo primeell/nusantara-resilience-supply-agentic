@@ -43,6 +43,7 @@ async def test_status_never_returns_secret_values(
     monkeypatch.setenv("SAP_CLIENT_SECRET", "secret-must-not-leak")
     monkeypatch.setenv("SAP_AUTH_URL", "https://auth.example.test")
     monkeypatch.setenv("SAP_AI_API_URL", "https://ai.example.test")
+    monkeypatch.setenv("SAP_GPT_DEPLOYMENT_ID", "deployment-id-must-not-leak")
     response = await api_client.get("/api/v1/status")
     serialized = response.text
     assert response.status_code == 200
@@ -50,6 +51,7 @@ async def test_status_never_returns_secret_values(
     assert "client-id-must-not-leak" not in serialized
     assert "secret-must-not-leak" not in serialized
     assert "https://auth.example.test" not in serialized
+    assert "deployment-id-must-not-leak" not in serialized
 
 
 async def test_production_blocks_public_live_ai_requests(

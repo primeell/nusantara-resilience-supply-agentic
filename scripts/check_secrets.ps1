@@ -92,7 +92,7 @@ try {
 
             if ($line -match '(?i)(client[_-]?secret|api[_-]?key|password|private[_-]?key|authorization)\s*["'']?\s*[:=]\s*["'']([^"'']{16,})["'']') {
                 $value = $Matches[2]
-                $isReference = $value -match '(?i)(example|placeholder|changeme|dummy|test|\$\{|\$env:|getenv|environ|credentials?\[|\{[A-Za-z_][A-Za-z0-9_]*\})'
+                $isReference = $value -match '(?i)(example|placeholder|changeme|dummy|test|\$\{|\$env:|getenv|environ|credentials?\[|\{env:[A-Za-z_][A-Za-z0-9_]*\}|\{[A-Za-z_][A-Za-z0-9_]*\})'
                 if (-not $isReference) {
                     $findings.Add([pscustomobject]@{
                         Path = $relativePath

@@ -75,9 +75,8 @@ The detailed evidence, dates, and known gaps are maintained in [Implementation P
 ```powershell
 Set-Location C:\nusantara-supply-agent
 py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 Copy-Item .env.example .env
 ```
 
@@ -85,11 +84,13 @@ What these commands do:
 
 1. `Set-Location` moves the terminal into the repository.
 2. `py -3.12 -m venv .venv` creates an isolated Python environment.
-3. `Activate.ps1` makes that environment active in the current terminal.
-4. The two `pip` commands update the installer and install runtime plus development dependencies.
-5. `Copy-Item` creates a local configuration file. `.env` is ignored by Git and must never be committed.
+3. The two explicit `.venv\Scripts\python.exe` commands update the installer and
+   install dependencies into that exact environment, avoiding cross-version
+   `pip` selection.
+4. `Copy-Item` creates a local configuration file. `.env` is ignored by Git and must never be committed.
 
-If PowerShell blocks activation, allow scripts only for the current terminal session:
+Activation is optional for repository helpers. If a developer wants an activated
+shell and PowerShell blocks it, allow scripts only for the current session:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
@@ -126,6 +127,7 @@ The complete terminal command reference—including alternate ports, smoke tests
 |---|---|
 | [Documentation Index](docs/README.md) | Recommended reading order and source-of-truth map |
 | [Implementation Progress](docs/IMPLEMENTATION_PROGRESS.md) | Completed scope, current deployment facts, and known limitations |
+| [System Integration Guide](docs/SYSTEM_INTEGRATION_GUIDE.md) | End-to-end topology and detailed SAP, AWS, database, Joule, and OpenCode responsibilities |
 | [Integration Status](docs/INTEGRATION_STATUS.md) | SAP, Joule, PostgreSQL, AWS, and ERP integration design and evidence |
 | [Operations Guide](docs/OPERATIONS.md) | Local startup, restart, validation, command functions, and troubleshooting |
 | [Roadmap](docs/ROADMAP.md) | Prioritized work required for production maturity |
@@ -143,6 +145,7 @@ agent/          Bounded orchestration, SAP AI client, and tool registry
 backend/        FastAPI routes, domain services, optimization, analytics, persistence
 frontend/       First-party HTML, CSS, JavaScript, and Indonesia map data
 integrations/   AWS event and SAP transaction adapter boundaries
+bridge/         Loopback-only OpenCode adapter for controlled SAP AI Core testing
 joule/          SAP Joule capability and scenario definitions
 data/           Versioned synthetic seed dataset
 scripts/        Setup, validation, operations, migration, and deployment helpers

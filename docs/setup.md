@@ -14,16 +14,18 @@ This page is the short setup checklist. The canonical command explanations, rest
 ```powershell
 Set-Location C:\nusantara-supply-agent
 py -3.12 -m venv .venv
-Set-ExecutionPolicy -Scope Process Bypass
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 Copy-Item .env.example .env
 ```
 
 `Copy-Item` is a first-run command. Do not overwrite an existing `.env`, and never commit its contents.
 
 If this repository was moved after `.venv` was created, recreate the virtual environment. Python virtual environments are not reliably portable between paths.
+
+Repository helpers invoke `.venv\Scripts\python.exe` directly, so activation is
+not required for normal startup. For manual commands, prefer the same explicit
+interpreter path to prevent Python 3.12/3.13 binary-package mismatches.
 
 ## Verify and run
 

@@ -12,7 +12,10 @@ DEPLOYMENT_ID = (
     or os.environ.get('SAP_DEPLOYMENT_ID', '').strip()
 )
 RESOURCE_GROUP = os.environ.get('SAP_RESOURCE_GROUP', 'default')
-API_VERSION = os.environ.get('SAP_API_VERSION', '2024-12-01-preview')
+API_VERSION = (
+    os.environ.get('SAP_AI_API_VERSION', '').strip()
+    or os.environ.get('SAP_API_VERSION', '2024-12-01-preview').strip()
+)
 
 
 def config():
